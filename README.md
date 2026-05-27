@@ -1,9 +1,7 @@
 <div align="center">
-  <img width="50%" alt="openvid Hero" src="https://openvid.dev/images/pages/openvid.svg" />
+   <img width="50%" alt="openvid Hero" src="https://openvid.dev/images/pages/openvid-animation.svg" />
 
   ### Create professional demos and mockups in seconds, directly in your browser
-  [![oosmetrics](https://api.oosmetrics.com/api/v1/badge/achievement/0035870f-b4f4-4b12-9a1c-bef97b6785af.svg)](https://oosmetrics.com/repo/CristianOlivera1/openvid)
-
   **Record your screen or upload a video, add smooth zooms, device mockups, 3D effects, and custom backgrounds - export a cinematic demo.**
 
   [Live Demo](https://openvid.dev) • [Features](#-features) • [Installation](#-quick-start) • [Discord Community](https://discord.gg/aBu5A2tBXb)
@@ -159,6 +157,8 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ¡Contributions are welcome! Join our **Discord** to collaborate: [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/aBu5A2tBXb)
 
+[![oosmetrics](https://api.oosmetrics.com/api/v1/badge/achievement/0035870f-b4f4-4b12-9a1c-bef97b6785af.svg)](https://oosmetrics.com/repo/CristianOlivera1/openvid)
+  
 ## Contributors
 <a href="https://github.com/CristianOlivera1/openvid/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=CristianOlivera1/openvid" />
