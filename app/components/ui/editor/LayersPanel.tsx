@@ -114,6 +114,19 @@ export function LayersPanel({
         return () => window.removeEventListener("keydown", handleKeyDown, true);
     }, [onDelete, onSelect]);
 
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 639px)");
+
+        const handler = (e: MediaQueryListEvent) => {
+            setIsOpen(!e.matches);
+        };
+
+        setIsOpen(!mq.matches);
+
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+
     const handleRowClick = useCallback(
         (e: React.MouseEvent, id: string) => {
             if (e.shiftKey) {
