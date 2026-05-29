@@ -191,13 +191,42 @@ export function ToolsSidebar({
 
     const recordButtonContent = getRecordButtonContent();
 
+    const sidebarWrapperRef = useRef<HTMLDivElement>(null);
+    const [sidebarHeight, setSidebarHeight] = useState<number | null>(null);
+
+    useEffect(() => {
+        const wrapper = sidebarWrapperRef.current;
+        if (!wrapper) return;
+
+        const compute = (containerHeight: number) => {
+            if (containerHeight <= 0) return;
+            const margin = 5;
+            const availableHeight = containerHeight - margin;
+            const heightMultiplier = containerHeight > 1200 ? 0.99 : containerHeight > 900 ? 0.96 : 0.95;
+            const calculatedHeight = availableHeight * heightMultiplier;
+            setSidebarHeight(calculatedHeight);
+        };
+
+        const observer = new ResizeObserver(([entry]) => {
+            const { height } = entry.contentRect;
+            compute(height);
+        });
+
+        observer.observe(wrapper);
+        const rect = wrapper.getBoundingClientRect();
+        compute(rect.height);
+
+        return () => observer.disconnect();
+    }, []);
+
     return (
-        <div className="relative shrink-0 bg-[#141417]" style={{ width: '90px' }} role="complementary" aria-label={t("tools.toolbar")}>
+        <div ref={sidebarWrapperRef} className="relative shrink-0 bg-[#141417]" style={{ width: '90px' }} role="complementary" aria-label={t("tools.toolbar")}>
             <div className="h-13 border-b border-white/10 w-full" />
             <aside
-                className="h-full absolute top-1/2 left-12 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-4 squircle-element border shadow-md shadow-white/20 border-white/10 z-40 max-h-154 3xl:max-h-[800px]"
+                className="absolute top-1/2 left-12 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-4 squircle-element border shadow-md shadow-white/20 border-white/10 z-40"
                 style={{
-                    height: 'calc(100% - 2rem)',
+                    height: sidebarHeight ? `${sidebarHeight}px` : 'calc(100% - 1rem)',
+                    maxHeight: sidebarHeight ? `${sidebarHeight}px` : '800px',
                     minWidth: '70px',
                     background: 'radial-gradient(circle at 50% 30%, #2a2a2a 0%, #131313 64%)',
                 }}
