@@ -99,22 +99,6 @@ Add context to your demo with professional frames:
 
 ---
 
-## Authentication
-
-Powered by **Supabase Auth** with OAuth support:
-
-<div align="center">
-
-| Provider | Status |
-|:--------:|:------:|
-| Google   | ✅ Supported |
-| GitHub   | ✅ Supported |
-| Twitch   | ✅ Supported |
-
-</div>
-
----
-
 ## Technology
 
 **Video Processing**
