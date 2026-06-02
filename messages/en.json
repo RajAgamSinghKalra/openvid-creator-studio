@@ -354,17 +354,7 @@
   },
   "demo": {
     "title": "Flawless demos",
-    "subtitle": "designed in seconds",
-    "features": [
-      "Screen recording",
-      "Smooth zooms",
-      "3D Camera movement",
-      "Device mockups",
-      "Custom backgrounds",
-      "Multi-track audio",
-      "4K Export",
-      "Image Export"
-    ]
+    "subtitle": "designed in seconds"
   },
   "recordingSetup": {
     "title": "Recording Setup",

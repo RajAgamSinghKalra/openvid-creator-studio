@@ -350,17 +350,7 @@
   },
   "demo": {
     "title": "Demos impecables",
-    "subtitle": "diseñadas en segundos",
-    "features": [
-      "Grabación de pantalla",
-      "Zooms suaves",
-      "Movimiento de Cámara 3D",
-      "Mockups de dispositivo",
-      "Fondos personalizados",
-      "Multipista de Audio",
-      "Exportación 4K",
-      "Exportación Imagen"
-    ]
+    "subtitle": "diseñadas en segundos"
   },
   "recordingSetup": {
     "title": "Configurar grabación",
