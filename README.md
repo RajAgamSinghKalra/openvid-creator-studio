@@ -8,12 +8,11 @@
 </div>
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/992f4ae3-c816-43ef-b029-2a15e7c0044f" width="100%">
-    Your browser does not support the video tag.
-  </video>
+  <a href="https://www.youtube.com/watch?v=BreTDBD_pGY" target="_blank">
+    <img src="https://github.com/user-attachments/assets/82a82dc8-ce81-4d78-829e-12c9ef096758">
+  </a>
+  <br>
 </div>
-
-<img width="1890" height="1318" alt="Frame 1116606714 (1)" src="https://github.com/user-attachments/assets/a8ef1f0a-af93-461f-ab27-b890e17bf6b9" />
 
 ## Features
 
