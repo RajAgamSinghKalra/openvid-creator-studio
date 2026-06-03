@@ -23,7 +23,7 @@ export default function VideoHero() {
                     <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-white/40 to-transparent z-20" />
                     <div className="absolute inset-x-0 top-0 h-40 bg-linear-to-b from-white/10 to-transparent z-10 pointer-events-none" />
                     <video autoPlay loop muted playsInline preload="auto" poster="/images/pages/demo-hero-poster.webp" aria-label={t("title")} className="block w-full h-full object-cover">
-                      <source src="/images/pages/demo-hero.mp4" type="video/mp4" />
+                      <source src="/images/pages/demo-hero2.mp4" type="video/mp4" />
                     </video>
                   </div>
                 </div>

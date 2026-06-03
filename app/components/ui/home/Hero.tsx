@@ -117,21 +117,18 @@ export default function Hero({ onVideoUpload, onPhotoUpload }: HeroProps) {
     return (
         <>
             <h1 className="animate-reveal text-5xl md:text-7xl font-semibold text-white tracking-tight mb-6 leading-[1.1] drop-shadow-[1.2px_1.2px_100.2px_rgba(183,203,248,1)]">
-                <div
-                    className={`absolute h-auto shadow-2xl transition-all ${locale === "es"
-                            ? "-top-16 sm:-top-4 lg:top-0 xl:top-3 left-14 -rotate-14"
-                            : "left-16 -top-16 sm:top-0 xl:top-3 sm:-left-6 -rotate-14"
-                        }`}
-                >
-                    <GitHubBadge />
-                </div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-10 sm:-translate-y-3 flex items-center justify-center gap-4 h-auto transition-all z-10 whitespace-nowrap">
+                    <img
+                        src="/svg/version.svg"
+                        alt=""
+                        aria-hidden="true"
+                        className="h-auto w-16 sm:w-18 shadow-2xl select-none align-middle translate-y-[2px]"
+                    />
 
-                <img
-                    src="/svg/version.svg"
-                    alt=""
-                    aria-hidden="true"
-                    className={`absolute h-auto shadow-2xl transition-all ${locale === 'es' ? "-top-8 sm:-top-4 lg:top-0 xl:top-2 left-0 -rotate-10 sm:left-30" : "-top-8 sm:top-0 xl:top-2 sm:left-10 -rotate-10"} w-16 sm:w-18`}
-                />
+                    <div className="flex items-center shadow-2xl h-full mt-1">
+                        <GitHubBadge />
+                    </div>
+                </div>
                 {t.rich("title", {
                     screen: (chunks) => (
                         <span className="relative inline-flex items-center">
@@ -144,7 +141,7 @@ export default function Hero({ onVideoUpload, onPhotoUpload }: HeroProps) {
                             />
                             <img
                                 src="/svg/cursor-animate.svg"
-                                className="absolute -top-18 sm:-top-25 -right-28 sm:-right-30 h-[4em] w-auto"
+                                className="hidden sm:flex absolute -top-18 sm:-top-25 -right-28 sm:-right-30 h-[4em] w-auto"
                                 alt=""
                                 aria-hidden="true"
                             />
@@ -174,7 +171,7 @@ export default function Hero({ onVideoUpload, onPhotoUpload }: HeroProps) {
                                 : "border-white/20 bg-white/5 text-white/90 hover:border-white/40 hover:bg-white/10 hover:text-white/80"
                             }`}
                     >
-                        <div className="flex items-su justify-center gap-3 pointer-events-none w-full">
+                        <div className="flex items-center justify-center gap-3 pointer-events-none w-full">
                             {isUploadingVideo ? (
                                 <>
                                     <Icon
@@ -198,18 +195,24 @@ export default function Hero({ onVideoUpload, onPhotoUpload }: HeroProps) {
                             ) : (
                                 <>
                                     <Icon icon="mage:video-upload" width="22" className="shrink-0" aria-hidden="true" />
-                                    <span>{t("uploadButton")}</span>
-                                    <span className="text-white/40 text-xs">MP4, WebM, MOV</span>
+
+                                    <div className="flex items-center gap-2">
+                                        <span>{t("uploadButton")}</span>
+                                        <span className="text-white/40 text-xs font-mono select-none">
+                                            MP4, WebM, MOV
+                                        </span>
+                                    </div>
                                 </>
                             )}
                         </div>
+
                         {isDraggingVideo && (
                             <div className="absolute inset-0 rounded-2xl bg-blue-500/5 blur-sm pointer-events-none" />
                         )}
                     </div>
                     <Link
                         href="/editor?mode=video"
-                        className="text-sm text-white/60 hover:text-white/80 transition-colors underline decoration-white/30 underline-offset-4"
+                        className="text-sm text-white/70 hover:text-white/80 transition-colors underline decoration-white/30 underline-offset-4"
                     >
                         {t("goToVideoEditor")}
                     </Link>
@@ -265,18 +268,24 @@ export default function Hero({ onVideoUpload, onPhotoUpload }: HeroProps) {
                                         className="shrink-0"
                                         aria-hidden="true"
                                     />
-                                    <span>{t("uploadPhotoButton")}</span>
-                                    <span className="text-white/40 text-xs">JPG, PNG, WEBP</span>
+
+                                    <div className="flex items-center gap-2">
+                                        <span>{t("uploadPhotoButton")}</span>
+                                        <span className="text-white/40 text-xs font-mono select-none">
+                                            JPG, PNG, WEBP
+                                        </span>
+                                    </div>
                                 </>
                             )}
                         </div>
+
                         {isDraggingPhoto && (
                             <div className="absolute inset-0 rounded-2xl bg-red-500/5 blur-sm pointer-events-none" />
                         )}
                     </div>
                     <Link
                         href="/editor?mode=photo"
-                        className="text-sm text-white/60 hover:text-white/80 transition-colors underline decoration-white/30 underline-offset-4"
+                        className="text-sm text-white/70 hover:text-white/80 transition-colors underline decoration-white/30 underline-offset-4"
                     >
                         {t("goToPhotoEditor")}
                     </Link>

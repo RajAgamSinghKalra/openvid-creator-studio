@@ -6,6 +6,7 @@ import type { Metadata } from 'next';
 import DonationCard from "@/app/components/ui/home/DonationCard";
 import EditorPreview from "@/app/components/ui/home/EditorPreview";
 import VideoHero from "@/app/components/ui/home/VideoHero";
+import BannerCTA from "@/app/components/ui/home/BannerCTA";
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -89,7 +90,7 @@ export default async function Home({ params }: Props) {
           </div>
         </section>
 
-        <div className="relative overflow-hidden bg-gradient-radial-primary w-full pt-0 pb-30 sm:py-20">
+        <div className="relative overflow-hidden bg-gradient-radial-primary w-full sm:pt-24">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-250 h-[150%] rounded-[100%] blur-xl pointer-events-none" aria-hidden="true"></div>
           <section className="w-full" aria-label="Editor features and demos">
             <div className="w-full mx-auto bg-[url('/images/pages/dots.svg')] bg-no-repeat bg-[size:68%] bg-center">
@@ -109,7 +110,9 @@ export default async function Home({ params }: Props) {
               <div className="max-w-xl mx-auto px-6">
                 <DonationCard />
               </div>
+              <div className="absolute inset-x-0 bottom-0 h-32 bg-linear-to-t from-[#0a0a0a] to-transparent pointer-events-none z-20" />
             </section>
+            <BannerCTA />
           </section>
         </div>
       </div>
