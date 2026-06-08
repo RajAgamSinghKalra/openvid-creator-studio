@@ -9,7 +9,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useTranslations } from "next-intl";
 import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
-import { useRecording } from "@/hooks/RecordingContext";
+import { useRecording } from "@/app/contexts/RecordingContext";
 import RecordingSetupDialog from "../ui/RecordingSetupDialog";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 

@@ -3,8 +3,8 @@
 import Footer from "@/app/components/common/Footer";
 import Header from "@/app/components/common/Header";
 import RecordingOverlay from "@/app/components/ui/RecordingOverlay";
-import { RecordingProvider } from "@/hooks/RecordingContext";
-import { AuthProvider } from "@/hooks/useAuth";
+import { RecordingProvider } from "@/app/contexts/RecordingContext";
+import { AuthProvider } from "@/app/contexts/useAuth";
 import "../../globals.css";
 
 export default function HomeLayout({ children }: { children: React.ReactNode }) {

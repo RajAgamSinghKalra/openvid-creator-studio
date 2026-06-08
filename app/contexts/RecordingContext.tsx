@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, ReactNode, useEffect } from "react";
-import { useScreenRecording } from "./useScreenRecording";
+import { useScreenRecording } from "../../hooks/useScreenRecording";
 import type { RecordingState, RecordingContextType } from "@/types";
 
 export type { RecordingState, RecordingContextType };

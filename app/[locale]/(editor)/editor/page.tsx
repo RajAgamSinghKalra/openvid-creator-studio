@@ -39,7 +39,8 @@ import { findValidFragmentPosition } from "@/app/components/ui/editor/ZoomFragme
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { TimelineSkeleton } from "@/app/components/ui/Skeleton";
 import { AudioTrimModal } from "@/app/components/ui/editor/AudioTrimModal";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/app/contexts/useAuth";
+import { useMotionContext } from "@/app/contexts/MotionContext";
 import { VIDEO_Z_INDEX } from "@/lib/constants";
 import { getWallpaperUrl } from "@/lib/wallpaper.utils";
 import Image from "next/image";
@@ -59,6 +60,22 @@ export default function Editor() {
 
     // Auth — needed for building production-ready Recipe JSON
     const { user } = useAuth();
+    const {
+        undoMotion, redoMotion, pushHistory,
+        canUndoMotion, canRedoMotion,
+        imagePhoneActive, setImagePhoneActive,
+        imagePhoneX, setImagePhoneX,
+        imagePhoneY, setImagePhoneY,
+        imagePhoneScale, setImagePhoneScale,
+        imagePhoneRotX, setImagePhoneRotX,
+        imagePhoneRotY, setImagePhoneRotY,
+        imagePhoneRotZ, setImagePhoneRotZ,
+        imagePhonePerspective, setImagePhonePerspective,
+        imagePhoneDevice, setImagePhoneDevice,
+        imagePhoneOpening, setImagePhoneOpening,
+        imagePhoneShadow, setImagePhoneShadow,
+        imagePhoneShadowColor, setImagePhoneShadowColor,
+    } = useMotionContext();
 
     // Undo/Redo system - centralized state management
     const {
@@ -281,6 +298,18 @@ export default function Editor() {
                     imagePreview3D: imageTransform,
                     apply3DToBackground,
                     imageMaskConfig,
+                    imagePhoneActive,
+                    imagePhoneX,
+                    imagePhoneY,
+                    imagePhoneScale,
+                    imagePhoneRotX,
+                    imagePhoneRotY,
+                    imagePhoneRotZ,
+                    imagePhonePerspective,
+                    imagePhoneDevice,
+                    imagePhoneOpening,
+                    imagePhoneShadow,
+                    imagePhoneShadowColor,
                 });
             } catch (error) {
                 console.error("Auto-save failed:", error);
@@ -309,6 +338,18 @@ export default function Editor() {
         imageTransform,
         apply3DToBackground,
         imageMaskConfig,
+        imagePhoneActive,
+        imagePhoneX,
+        imagePhoneY,
+        imagePhoneScale,
+        imagePhoneRotX,
+        imagePhoneRotY,
+        imagePhoneRotZ,
+        imagePhonePerspective,
+        imagePhoneDevice,
+        imagePhoneOpening,
+        imagePhoneShadow,
+        imagePhoneShadowColor,
     ]);
 
     useEffect(() => {
@@ -334,6 +375,18 @@ export default function Editor() {
         imageTransform,
         apply3DToBackground,
         imageMaskConfig,
+        imagePhoneActive,
+        imagePhoneX,
+        imagePhoneY,
+        imagePhoneScale,
+        imagePhoneRotX,
+        imagePhoneRotY,
+        imagePhoneRotZ,
+        imagePhonePerspective,
+        imagePhoneDevice,
+        imagePhoneOpening,
+        imagePhoneShadow,
+        imagePhoneShadowColor,
         currentProject,
         isPhotoMode,
         autoSaveCurrentProject,
@@ -381,10 +434,26 @@ export default function Editor() {
             height: currentProject.imageHeight,
         });
 
+        // ── Restore motion / 3D device mockup state ────────────────────────
+        if (currentProject.imagePhoneActive !== undefined) {
+            setImagePhoneActive(currentProject.imagePhoneActive);
+        }
+        if (currentProject.imagePhoneX !== undefined) setImagePhoneX(currentProject.imagePhoneX);
+        if (currentProject.imagePhoneY !== undefined) setImagePhoneY(currentProject.imagePhoneY);
+        if (currentProject.imagePhoneScale !== undefined) setImagePhoneScale(currentProject.imagePhoneScale);
+        if (currentProject.imagePhoneRotX !== undefined) setImagePhoneRotX(currentProject.imagePhoneRotX);
+        if (currentProject.imagePhoneRotY !== undefined) setImagePhoneRotY(currentProject.imagePhoneRotY);
+        if (currentProject.imagePhoneRotZ !== undefined) setImagePhoneRotZ(currentProject.imagePhoneRotZ);
+        if (currentProject.imagePhonePerspective !== undefined) setImagePhonePerspective(currentProject.imagePhonePerspective);
+        if (currentProject.imagePhoneDevice !== undefined) setImagePhoneDevice(currentProject.imagePhoneDevice);
+        if (currentProject.imagePhoneOpening !== undefined) setImagePhoneOpening(currentProject.imagePhoneOpening);
+        if (currentProject.imagePhoneShadow !== undefined) setImagePhoneShadow(currentProject.imagePhoneShadow);
+        if (currentProject.imagePhoneShadowColor !== undefined) setImagePhoneShadowColor(currentProject.imagePhoneShadowColor);
+
         setTimeout(() => {
             isRestoringProjectRef.current = false;
-        }, 500); // 
-    }, [currentProject, isPhotoMode]);
+        }, 500); //
+    }, [currentProject, isPhotoMode, setImagePhoneActive, setImagePhoneX, setImagePhoneY, setImagePhoneScale, setImagePhoneRotX, setImagePhoneRotY, setImagePhoneRotZ, setImagePhonePerspective, setImagePhoneDevice, setImagePhoneOpening, setImagePhoneShadow, setImagePhoneShadowColor]);
 
     // Image project handlers
     const handleSelectImageProject = useCallback(async (projectId: string) => {
@@ -473,6 +542,20 @@ export default function Editor() {
                     imagePreview3D: imageTransform,
                     apply3DToBackground,
                     imageMaskConfig,
+                    // ── Preserve current phone/device state in the new project ──
+                    // Without these, the restore useEffect resets the device to 'phone'
+                    imagePhoneActive,
+                    imagePhoneX,
+                    imagePhoneY,
+                    imagePhoneScale,
+                    imagePhoneRotX,
+                    imagePhoneRotY,
+                    imagePhoneRotZ,
+                    imagePhonePerspective,
+                    imagePhoneDevice,
+                    imagePhoneOpening,
+                    imagePhoneShadow,
+                    imagePhoneShadowColor,
                 }
             );
 
@@ -503,6 +586,18 @@ export default function Editor() {
         imageTransform,
         apply3DToBackground,
         imageMaskConfig,
+        imagePhoneActive,
+        imagePhoneX,
+        imagePhoneY,
+        imagePhoneScale,
+        imagePhoneRotX,
+        imagePhoneRotY,
+        imagePhoneRotZ,
+        imagePhonePerspective,
+        imagePhoneDevice,
+        imagePhoneOpening,
+        imagePhoneShadow,
+        imagePhoneShadowColor,
     ]);
 
     // Screen capture handler - now creates a project
@@ -562,6 +657,20 @@ export default function Editor() {
                     imagePreview3D: imageTransform,
                     apply3DToBackground,
                     imageMaskConfig,
+                    // ── Preserve current phone/device state in the new project ──
+                    // Without these, the restore useEffect resets the device to 'phone'
+                    imagePhoneActive,
+                    imagePhoneX,
+                    imagePhoneY,
+                    imagePhoneScale,
+                    imagePhoneRotX,
+                    imagePhoneRotY,
+                    imagePhoneRotZ,
+                    imagePhonePerspective,
+                    imagePhoneDevice,
+                    imagePhoneOpening,
+                    imagePhoneShadow,
+                    imagePhoneShadowColor,
                 }
             );
 
@@ -592,6 +701,18 @@ export default function Editor() {
         imageTransform,
         apply3DToBackground,
         imageMaskConfig,
+        imagePhoneActive,
+        imagePhoneX,
+        imagePhoneY,
+        imagePhoneScale,
+        imagePhoneRotX,
+        imagePhoneRotY,
+        imagePhoneRotZ,
+        imagePhonePerspective,
+        imagePhoneDevice,
+        imagePhoneOpening,
+        imagePhoneShadow,
+        imagePhoneShadowColor,
     ]);
 
     // Handler for drag & drop images on canvas (photo mode only)
@@ -1988,6 +2109,21 @@ export default function Editor() {
 
             if (isInputFocused) return;
 
+            // Motion-specific undo/redo when the motion tool is active
+            if (activeTool === "motion") {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                    e.preventDefault();
+                    undoMotion();
+                    return;
+                }
+                if (((e.ctrlKey || e.metaKey) && e.key === 'y') ||
+                    ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')) {
+                    e.preventDefault();
+                    redoMotion();
+                    return;
+                }
+            }
+
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 if (canUndo) {
@@ -2006,7 +2142,7 @@ export default function Editor() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, canUndo, canRedo]);
+    }, [undo, redo, canUndo, canRedo, activeTool, undoMotion, redoMotion]);
 
     // Keyboard listener for Ctrl+V image paste (photo mode only)
     useEffect(() => {
@@ -2931,6 +3067,11 @@ export default function Editor() {
                                 imageExportProgress={imageExportProgress}
                                 canvasWidth={customAspectRatio?.width || 1920}
                                 canvasHeight={customAspectRatio?.height || 1080}
+                                activeTool={activeTool}
+                                onUndoMotion={undoMotion}
+                                onRedoMotion={redoMotion}
+                                canUndoMotion={canUndoMotion}
+                                canRedoMotion={canRedoMotion}
                             />
                         }
                         ref={canvasRef}

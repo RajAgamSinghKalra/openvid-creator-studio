@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider } from "@/app/contexts/useAuth";
 import { Link } from "@/navigation";
 import Footer from "../components/common/Footer";
 import Header from "../components/common/Header";

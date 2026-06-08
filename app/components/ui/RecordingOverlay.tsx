@@ -1,6 +1,6 @@
 "use client";
 
-import { useRecording } from "@/hooks/RecordingContext";
+import { useRecording } from "@/app/contexts/RecordingContext";
 import FloatingCameraPreview from "./FloatingCameraPreview";
 import { useTranslations } from "next-intl";
 

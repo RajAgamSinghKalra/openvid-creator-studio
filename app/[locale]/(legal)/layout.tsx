@@ -1,7 +1,7 @@
 import Footer from "@/app/components/common/Footer";
 import Header from "@/app/components/common/Header";
-import { AuthProvider } from "@/hooks/useAuth";
-import { RecordingProvider } from "@/hooks/RecordingContext";
+import { AuthProvider } from "@/app/contexts/useAuth";
+import { RecordingProvider } from "@/app/contexts/RecordingContext";
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {

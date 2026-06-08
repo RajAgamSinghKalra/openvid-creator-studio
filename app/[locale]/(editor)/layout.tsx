@@ -1,9 +1,9 @@
 "use client";
 
-import { AuthProvider } from "@/hooks/useAuth";
-import { RecordingProvider } from "@/hooks/RecordingContext";
+import { AuthProvider } from "@/app/contexts/useAuth";
 import RecordingOverlay from "../../components/ui/RecordingOverlay";
 import { MotionProvider } from "@/app/contexts/MotionContext";
+import { RecordingProvider } from "@/app/contexts/RecordingContext";
 
 export default function EditorLayout({ children }: { children: React.ReactNode }) {
     return (

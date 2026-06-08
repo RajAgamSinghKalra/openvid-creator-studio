@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "@/navigation";
 import { Icon } from "@iconify/react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/app/contexts/useAuth";
 import { hasAnyVideo } from "@/lib/video-cache-utils";
 import * as Dialog from "@radix-ui/react-dialog";
 import Image from "next/image";

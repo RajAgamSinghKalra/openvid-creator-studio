@@ -3,7 +3,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Icon } from "@iconify/react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/app/contexts/useAuth";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
