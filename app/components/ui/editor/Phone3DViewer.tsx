@@ -75,8 +75,8 @@ function ModelScene({
   imageUrl,
   imageMaskConfig,
   cropArea,
-  initialRotationX = 0,
-  initialRotationY = 0,
+  initialRotationX = -58.23,
+  initialRotationY = -29,
   initialRotationZ = 0,
   onRotationChange,
   rootRef,
@@ -85,8 +85,8 @@ function ModelScene({
   modelUrl,
   onApi,
   onLoaded,
-}: Props & { 
-  rootRef: React.MutableRefObject<THREE.Group | null>; 
+}: Props & {
+  rootRef: React.MutableRefObject<THREE.Group | null>;
   cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
   onLoaded?: () => void;
 }) {
@@ -235,13 +235,13 @@ function ModelScene({
     const finalizeSetup = (group: THREE.Group) => {
       if (!isMounted) return;
       setModelGroup(group);
-      
+
       // Retrasamos unos milisegundos para asegurar que Three ha inyectado el nodo
       setTimeout(() => {
         if (!isMounted) return;
-        applyTextureRef.current(); 
+        applyTextureRef.current();
         onLoaded?.();
-      }, 50); 
+      }, 50);
     };
 
     if (isDefaultPhone) {
@@ -249,13 +249,13 @@ function ModelScene({
       loadGltfGroup().then((cached) => {
         const group = cloneGroup(cached);
         // Usamos zoom default aquí para montar el tamaño base. El useEffect dinámico hará el resto.
-        const camZ = 1.5; 
+        const camZ = 1.5;
         const box = new THREE.Box3().setFromObject(group);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const halfH = camZ * Math.tan((40 / 2) * DEG);
         const sf = (halfH * 2 * 0.8) / size.y;
-        
+
         group.scale.setScalar(sf);
         group.position.copy(center).negate().multiplyScalar(sf);
 
@@ -269,7 +269,7 @@ function ModelScene({
             const meshBox = new THREE.Box3().setFromObject(child);
             const meshSize = meshBox.getSize(new THREE.Vector3());
             if (meshSize.x > 0 && meshSize.y > 0) screenAspectRef.current = meshSize.x / meshSize.y;
-            
+
             const basicMat = new THREE.MeshBasicMaterial({
               color: 0x111111, side: THREE.FrontSide, transparent: true, depthTest: false, depthWrite: false,
             });
@@ -293,7 +293,7 @@ function ModelScene({
         const size = box.getSize(new THREE.Vector3());
         const halfH = camZ * Math.tan((40 / 2) * DEG);
         const sf = (halfH * 2 * 0.8) / size.y;
-        
+
         group.scale.setScalar(sf);
         group.position.copy(center).negate().multiplyScalar(sf);
 
@@ -316,8 +316,8 @@ function ModelScene({
     }
 
     return () => { isMounted = false; };
-  // Desactivamos exhaust-deps para que NUNCA se vuelva a ejecutar este setup al hacer zoom o cambiar onLoaded
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Desactivamos exhaust-deps para que NUNCA se vuelva a ejecutar este setup al hacer zoom o cambiar onLoaded
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelUrl]);
 
   // 4. Actualizar posiciones de cámara dinámicas (Esto es seguro de ejecutar contínuamente)
@@ -338,20 +338,20 @@ function ModelScene({
   return (
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault fov={40} near={0.01} far={100} position={[0, 0, 1.5 / zoom]} />
-      
-      <OrbitControls 
-        ref={orbitRef} 
-        enableZoom={false} 
-        enablePan={false} 
-        enableDamping 
-        dampingFactor={0.08} 
+
+      <OrbitControls
+        ref={orbitRef}
+        enableZoom={false}
+        enablePan={false}
+        enableDamping
+        dampingFactor={0.08}
         onEnd={() => {
           const orbit = orbitRef.current;
           if (!orbit || !onRotationChange) return;
           const ry = orbit.getAzimuthalAngle() * (180 / Math.PI);
           const rx = (Math.PI / 2 - orbit.getPolarAngle()) * (180 / Math.PI);
           onRotationChange(rx, ry);
-        }} 
+        }}
       />
 
       <Environment preset="city" background={false} />
@@ -431,7 +431,7 @@ export function Phone3DViewer(props: Props) {
   const shadowRgba = shadowColor.startsWith("#")
     ? parseShadowColor(shadowColor, computedOpacity)
     : shadowColor;
-  
+
   const hasShadow = t > 0.01;
 
   return (
@@ -439,7 +439,6 @@ export function Phone3DViewer(props: Props) {
       style={{
         display: "inline-block",
         transformOrigin: "top center",
-        transform: `scale(${scale})`,
         width: PHONE_W,
         height: PHONE_H + (hasShadow ? computedBlur * 0.8 : 0),
         marginTop: "220px",
@@ -447,7 +446,7 @@ export function Phone3DViewer(props: Props) {
       }}
     >
       <div style={{ position: "relative", width: PHONE_W, height: PHONE_H }}>
-        
+
         {hasShadow && (
           <div
             aria-hidden

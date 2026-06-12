@@ -196,13 +196,13 @@ function ModelScene({
             tex.magFilter = THREE.LinearFilter;
             tex.wrapS = THREE.ClampToEdgeWrapping;
             tex.wrapT = THREE.ClampToEdgeWrapping;
-            
+
             // EL SECRETO PARA LOS ÁNGULOS: Filtro Anisotrópico al máximo
             tex.anisotropy = gl.capabilities.getMaxAnisotropy();
-            
+
             mat.map = tex;
             mat.needsUpdate = true;
-            
+
             lastLoadedImageUrlRef.current = imageUrl;
             lastLoadedMaskKeyRef.current = maskKey;
             lastLoadedCropKeyRef.current = cropKey;
@@ -257,7 +257,7 @@ function ModelScene({
                 }}
             />
 
-            <Environment preset="city" background={false} />
+            <Environment preset="studio" background={false} />
             <ambientLight intensity={0.3} />
             <directionalLight position={[3, 6, 5]} intensity={0.6} />
             <directionalLight position={[-4, -2, 3]} intensity={0.25} color="#c8d8ff" />
@@ -416,7 +416,6 @@ export function IPhone13ProMax3DViewer({
             style={{
                 display: "inline-block",
                 transformOrigin: "top center",
-                transform: `scale(${scale})`,
                 width: 480,
                 height: 1000 + (hasShadow ? computedBlur * 0.8 : 0),
                 marginTop: "200px",

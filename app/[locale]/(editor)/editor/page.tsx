@@ -152,6 +152,11 @@ export default function Editor() {
     // MockupMenu via the `initialPage` prop (resets to "home" on remount when
     // the menu is collapsed/expanded).
     const [initialMockupMenuPage, setInitialMockupMenuPage] = useState<MenuPage>("home");
+    // Increments on every handleMockupClick so the MockupMenu re-navigates
+    // even when the user clicks the SAME mockup twice in a row (in which
+    // case initialMockupMenuPage would not change and the useEffect inside
+    // MockupMenu would not fire).
+    const [mockupMenuNavigationToken, setMockupMenuNavigationToken] = useState(0);
 
     // Video transform state (rotation and position)
     const [videoTransform, setVideoTransform] = useState<{ rotation: number; translateX: number; translateY: number }>({
@@ -1112,6 +1117,7 @@ export default function Editor() {
     // (see onMockupClick in VideoCanvasProps).
     const handleMockupClick = useCallback((kind: "2d" | "3d") => {
         setInitialMockupMenuPage(kind === "2d" ? "detail-2d" : "detail-3d");
+        setMockupMenuNavigationToken((t) => t + 1);
         setActiveTool("mockup");
         setIsControlPanelOpen(true);
     }, [setActiveTool]);
@@ -2999,6 +3005,7 @@ export default function Editor() {
                                         onMockupChange={handleMockupChange}
                                         onMockupConfigChange={handleMockupConfigChange}
                                         initialMockupMenuPage={initialMockupMenuPage}
+                                        mockupMenuNavigationToken={mockupMenuNavigationToken}
                                         onAddCanvasElement={addCanvasElement}
                                         selectedCanvasElement={canvasElements.find(el => el.id === selectedElementId) || null}
                                         onUpdateCanvasElement={updateCanvasElement}

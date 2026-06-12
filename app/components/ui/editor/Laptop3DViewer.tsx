@@ -84,7 +84,7 @@ function ModelScene({
   const { gl, scene, camera } = useThree();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orbitRef = useRef<any>(null);
-  
+
   const [modelGroup, setModelGroup] = useState<THREE.Group | null>(null);
   const lidGroupRef = useRef<THREE.Group | null>(null);
   const screenMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
@@ -144,7 +144,7 @@ function ModelScene({
       if (!currentMat) return;
 
       // Usamos una resolución alta para evitar pixelación
-      const TEX_W = RENDER_W; 
+      const TEX_W = RENDER_W;
       const TEX_H = RENDER_H;
 
       const cropped = applyCropToImage(img, cropArea);
@@ -158,7 +158,7 @@ function ModelScene({
       tex.flipY = false;
       tex.wrapS = THREE.RepeatWrapping;
       tex.colorSpace = THREE.SRGBColorSpace;
-      
+
       if (cover.width && cover.height) {
         tex.repeat.y = ((cover.width / cover.height) / screenSize[0]) * screenSize[1];
       }
@@ -202,17 +202,17 @@ function ModelScene({
     const cameraMaterial = new THREE.MeshBasicMaterial({ color: 0x333333 });
     const logoMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const baseMetalMaterial = new THREE.MeshStandardMaterial({ color: 0xcecfd3, roughness: 0.25, metalness: 0.85 });
-    
+
     const tStart = Math.max(0, Math.min(1, openingProgress));
-    
+
     // MEJORA DE CALIDAD: toneMapped: false evita que los colores de la captura se vean grises/oscuros
-    const screenMaterial = new THREE.MeshBasicMaterial({ 
-      map: null, 
-      transparent: true, 
-      opacity: 0.96 * tStart, 
+    const screenMaterial = new THREE.MeshBasicMaterial({
+      map: null,
+      transparent: true,
+      opacity: 0.96 * tStart,
       side: THREE.BackSide,
       color: 0xffffff,
-      toneMapped: false 
+      toneMapped: false
     });
     screenMatRef.current = screenMaterial;
 
@@ -228,7 +228,7 @@ function ModelScene({
     const finalizeSetup = (group: THREE.Group) => {
       if (!isMounted) return;
       setModelGroup(group);
-      
+
       setTimeout(() => {
         if (!isMounted) return;
         applyTextureRef.current();
@@ -290,7 +290,7 @@ function ModelScene({
     });
 
     return () => { isMounted = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 4. Actualizar posiciones de cámara dinámicas
@@ -322,25 +322,25 @@ function ModelScene({
   return (
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault fov={CAM_FOV} near={10} far={1000} position={[0, 0, CAM_RADIUS / zoom]} />
-      
-      <OrbitControls 
-        ref={orbitRef} 
-        enableZoom={false} 
-        enablePan={false} 
-        enableDamping 
-        dampingFactor={0.08} 
+
+      <OrbitControls
+        ref={orbitRef}
+        enableZoom={false}
+        enablePan={false}
+        enableDamping
+        dampingFactor={0.08}
         onEnd={() => {
           const orbit = orbitRef.current;
           if (!orbit || !onRotationChange) return;
           const ry = orbit.getAzimuthalAngle() * (180 / Math.PI);
           const rx = (Math.PI / 2 - orbit.getPolarAngle()) * (180 / Math.PI);
           onRotationChange(rx, ry);
-        }} 
+        }}
       />
 
       <Environment preset="city" background={false} />
       <ambientLight intensity={3.2} />
-      
+
       <group>
         <pointLight position={[0, 5, 50]} intensity={0.8} color="#fff5e1" />
       </group>
@@ -399,7 +399,6 @@ function CanvasWithLoader(props: Props & {
 
 export function Laptop3DViewer(props: Props) {
   const {
-    scale = 1,
     shadowIntensity = 0,
     shadowColor = "#000000",
   } = props;
@@ -416,7 +415,7 @@ export function Laptop3DViewer(props: Props) {
   const shadowRgba = shadowColor.startsWith("#")
     ? parseShadowColor(shadowColor, computedOpacity)
     : shadowColor;
-  
+
   const hasShadow = t > 0.01;
 
   return (
@@ -424,7 +423,6 @@ export function Laptop3DViewer(props: Props) {
       style={{
         display: "inline-block",
         transformOrigin: "top center",
-        transform: `scale(${scale})`,
         width: LAPTOP_W,
         height: LAPTOP_H + (hasShadow ? computedBlur * 0.8 : 0),
         marginTop: "250px",

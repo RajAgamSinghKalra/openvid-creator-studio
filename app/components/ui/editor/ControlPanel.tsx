@@ -89,8 +89,12 @@ export function ControlPanel({
     onMockupConfigChange,
     // Initial page for the MockupMenu (home | detail-2d | detail-3d). Set by
     // the parent when the user clicks a mockup already applied on the canvas,
-    // so the menu opens directly on the config panel of that frame.
+    // so the menu opens directly on the config panel of that frame. The
+    // MockupMenu is keyed by `mockupMenuNavigationToken` to re-mount on every
+    // canvas click so the `useState(initialPage)` re-reads the new value
+    // even when the same page is selected twice in a row.
     initialMockupMenuPage,
+    mockupMenuNavigationToken = 0,
     // Canvas elements props
     onAddCanvasElement,
     selectedCanvasElement,
@@ -280,6 +284,7 @@ export function ControlPanel({
                 {activeTool === "mockup" && (
                     <Suspense fallback={<MockupMenuSkeleton />}>
                         <MockupMenu
+                            key={mockupMenuNavigationToken}
                             mockupId={mockupId}
                             mockupConfig={mockupConfig}
                             onMockupChange={onMockupChange}

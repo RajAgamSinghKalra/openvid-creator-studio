@@ -73,7 +73,7 @@ function DeviceCard({
       {isActive && (
         <div
           className="pointer-events-none absolute inset-0 rounded-2xl"
-          style={{ boxShadow: `0 0 0 1.5px ${tpl.accentColor}88` }}
+          style={{ boxShadow: `inset 0 0 0 1.5px ${tpl.accentColor}88` }}
         />
       )}
     </div>
@@ -119,6 +119,17 @@ export function MockupMenu({
 
   // ── Navigation state ──
   const [page, setPage] = useState<MenuPage>(initialPage);
+
+  // Sync page when the parent (VideoCanvas click) sets initialPage to a
+  // detail view while the menu is already mounted. Without this, the
+  // `useState(initialPage)` only reads the prop on first mount, so a click
+  // on a mockup already applied on the canvas wouldn't navigate the menu
+  // to the matching detail page.
+  useEffect(() => {
+    if (initialPage !== "home") {
+      setPage(initialPage);
+    }
+  }, [initialPage]);
 
   // ── 2D popover state ──
   const [selectedCategory, setSelectedCategory] = useState<MockupCategory>("all");
@@ -283,24 +294,27 @@ export function MockupMenu({
   // ── Handlers: 3D ──
 
   const handleDeviceClick = (id: ImageDeviceId) => {
-    if (id !== imagePhoneDevice) {
-      setImagePhoneDevice(id);
-      setImagePhoneX(0);
-      setImagePhoneY(0);
-      setImagePhoneScale(0.8);
-      if (id === "iphone-13-pro-max") {
-        setImagePhoneRotX(-58.23);
-        setImagePhoneRotY(-29.82);
-      } else if (id === "laptop") {
-        setImagePhoneRotX(43.23);
-        setImagePhoneRotY(-37.82);
-        setImagePhoneOpening(1);
-        setImagePhoneScale(1);
-      } else {
-        setImagePhoneRotX(0);
-        setImagePhoneRotY(0);
-      }
-
+    // Always apply the per-device defaults on every click — even if the
+    // user picks the same device twice, we want to reset to the canonical
+    // pose. Without this, a device that starts at the context's default
+    // (imagePhoneRotX=0, imagePhoneRotY=0) would never snap to its pose
+    // because the "device changed" guard would be false.
+    setImagePhoneDevice(id);
+    setImagePhoneX(0);
+    setImagePhoneY(0);
+    setImagePhoneScale(0.8);
+    if (id === "iphone-13-pro-max") {
+      setImagePhoneRotX(-58.23);
+      setImagePhoneRotY(-29.82);
+    } else if (id === "laptop") {
+      setImagePhoneRotX(43.23);
+      setImagePhoneRotY(-37.82);
+      setImagePhoneOpening(1);
+      setImagePhoneScale(1);
+    } else {
+      // phone, iphone, samsung — all rendered through Phone3DViewer.tsx
+      setImagePhoneRotX(-58.23);
+      setImagePhoneRotY(-29.82);
     }
     setImagePhoneActive(true);
     if (mockupId !== "none") onMockupChange?.("none");
@@ -315,9 +329,7 @@ export function MockupMenu({
     setPage("home");
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
   // PAGE: DETAIL 2D
-  // ─────────────────────────────────────────────────────────────────────────
 
   if (page === "detail-2d") {
     return (
@@ -331,9 +343,7 @@ export function MockupMenu({
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
   // PAGE: DETAIL 3D
-  // ─────────────────────────────────────────────────────────────────────────
 
   if (page === "detail-3d") {
     return (
@@ -363,9 +373,7 @@ export function MockupMenu({
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
   // PAGE: HOME
-  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="p-4 flex flex-col gap-6">
@@ -580,11 +588,7 @@ export function MockupMenu({
           onMouseLeave={() => setIsDevicesHover(false)}
         >
           <div
-            className={`pointer-events-none absolute inset-y-0 left-0 z-20 w-10 bg-gradient-to-r from-[#141417] to-transparent transition-opacity duration-200 ${isDevicesHover && canScrollLeft ? "opacity-100" : "opacity-0"
-              }`}
-          />
-          <div
-            className={`pointer-events-none absolute inset-y-0 right-0 z-20 w-12 bg-gradient-to-l from-[#141417] to-transparent transition-opacity duration-200 ${isDevicesHover && canScrollRight ? "opacity-100" : "opacity-0"
+            className={`pointer-events-none absolute inset-y-0 right-0 z-20 w-8 bg-gradient-to-l from-[#141417] to-transparent transition-opacity duration-200 ${canScrollRight ? "opacity-100" : "opacity-0"
               }`}
           />
 
