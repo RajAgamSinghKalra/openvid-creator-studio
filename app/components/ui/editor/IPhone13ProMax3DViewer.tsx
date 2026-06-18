@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { PerspectiveCamera, useGLTF, Environment, OrbitControls } from "@react-three/drei";
+import { PerspectiveCamera, useGLTF, Environment, OrbitControls, ContactShadows } from "@react-three/drei";
 import { useEffect, useRef, useState, Suspense } from "react";
 import * as THREE from "three";
 import {
@@ -17,6 +17,8 @@ import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
 
 export interface IPhone13ProMax3DApi {
     renderAt: (width: number, height: number) => void;
+    restorePreview: () => void;
+    hasBuiltInShadow: boolean;
 }
 
 interface Props {
@@ -110,6 +112,8 @@ function ModelScene({
     onApi,
     onLoaded,
     videoElement,
+    shadowIntensity = 0,
+    shadowColor = "#000000",
 }: {
     imageUrl: string | null;
     imageMaskConfig: ImageMaskConfigLike | null;
@@ -124,8 +128,10 @@ function ModelScene({
     onApi?: (api: IPhone13ProMax3DApi | null) => void;
     onLoaded?: () => void;
     videoElement?: HTMLVideoElement | null;
+    shadowIntensity?: number;
+    shadowColor?: string;
 }) {
-    const { gl } = useThree();
+    const { gl, scene, camera } = useThree();
     const gltf = useGLTF("/models/apple_iphone_13_pro_max.glb") as unknown as {
         nodes: GLTFNodes;
         materials: GLTFMaterials;
@@ -138,7 +144,6 @@ function ModelScene({
     const lastLoadedCropKeyRef = useRef<string | null>(null);
     const wallpaperMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
     const videoTextureRef = useRef<THREE.VideoTexture | null>(null);
-
     const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D();
 
     useFrame(() => {
@@ -148,15 +153,35 @@ function ModelScene({
     });
 
     useEffect(() => {
+        const previewW = gl.domElement.clientWidth;
+        const previewH = gl.domElement.clientHeight;
         const api: IPhone13ProMax3DApi = {
             renderAt: (w, h) => {
-                void w;
-                void h;
+                const cam = cameraRef.current ?? camera;
+                if (!cam) return;
+                (cam as THREE.PerspectiveCamera).aspect = w / h;
+                (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
+                gl.setPixelRatio(2);
+                gl.setSize(w, h, false);
+                if (videoTextureRef.current) {
+                    videoTextureRef.current.needsUpdate = true;
+                }
+                gl.render(scene, cam);
             },
+            restorePreview: () => {
+                const cam = cameraRef.current ?? camera;
+                if (!cam) return;
+                const previewAspect = previewW / previewH;
+                (cam as THREE.PerspectiveCamera).aspect = previewAspect;
+                (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
+                gl.setPixelRatio(3);
+                gl.setSize(previewW, previewH, false);
+            },
+            hasBuiltInShadow: true,
         };
         onApi?.(api);
         return () => onApi?.(null);
-    }, [onApi]);
+    }, [gl, scene, camera, cameraRef, onApi]);
 
     useEffect(() => {
         onLoaded?.();
@@ -293,6 +318,12 @@ function ModelScene({
         }
     }, [initialRotationZ]);
 
+    // ContactShadows parameters derived from shadowIntensity
+    const shadowT = Math.max(0, Math.min(1, shadowIntensity));
+    const showContactShadow = shadowT > 0.01;
+    const contactOpacity = shadowT * 0.65;
+    const contactBlur = 1.5 + shadowT * 1.5;
+
     return (
         <>
             <PerspectiveCamera ref={cameraRef} makeDefault fov={40} near={0.01} far={100} position={[0, 0, 1.5 / zoom]} />
@@ -323,6 +354,19 @@ function ModelScene({
             <directionalLight position={[3, 6, 5]} intensity={0.6} />
             <directionalLight position={[-4, -2, 3]} intensity={0.25} color="#c8d8ff" />
             <directionalLight position={[0, -5, 5]} intensity={0.35} />
+
+            {/* Contact shadow rendered inside the WebGL scene for export fidelity */}
+            {showContactShadow && (
+                <ContactShadows
+                    position={[0, -0.55, 0]}
+                    opacity={contactOpacity}
+                    scale={3}
+                    blur={contactBlur}
+                    far={4}
+                    color={shadowColor}
+                    resolution={512}
+                />
+            )}
 
             <group ref={rootRef} rotation={[0, Math.PI, 0]} scale={0.01} dispose={null}>
                 <group scale={100}>
@@ -375,6 +419,8 @@ function CanvasWithLoader({
     onApi,
     onMount,
     videoElement,
+    shadowIntensity,
+    shadowColor,
 }: {
     imageUrl: string | null;
     imageMaskConfig: ImageMaskConfigLike | null;
@@ -389,6 +435,8 @@ function CanvasWithLoader({
     onApi?: (api: IPhone13ProMax3DApi | null) => void;
     onMount?: (canvas: HTMLCanvasElement) => void;
     videoElement?: HTMLVideoElement | null;
+    shadowIntensity?: number;
+    shadowColor?: string;
 }) {
     const [loaded, setLoaded] = useState(false);
     return (
@@ -426,6 +474,8 @@ function CanvasWithLoader({
                         onApi={onApi}
                         onLoaded={() => setLoaded(true)}
                         videoElement={videoElement}
+                        shadowIntensity={shadowIntensity}
+                        shadowColor={shadowColor}
                     />
                 </Suspense>
             </Canvas>
@@ -536,6 +586,8 @@ export function IPhone13ProMax3DViewer({
                             onApi={onApi}
                             onMount={onMount}
                             videoElement={videoElement}
+                            shadowIntensity={shadowIntensity}
+                            shadowColor={shadowColor}
                         />
                     </div>
                 </div>

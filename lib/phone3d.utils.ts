@@ -1,33 +1,25 @@
-/**
- * Phone3DViewer — pure helpers and constants
- *
- * Extracted from Phone3DViewer.tsx to keep the main component file focused
- * on React state, refs, and the render loop. Everything here is a pure
- * function or a module-level constant that doesn't depend on React.
- */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-// ─── Canvas dimensions ────────────────────────────────────────────────────────
-// Based on phone-gltf.glb model dimensions:
-// Model aspect ratio (width/height): 0.479
-// Screen aspect ratio (width/height): 0.459
 export const PHONE_H = 704;
-export const PHONE_W = Math.round(PHONE_H * 0.479); // matches model aspect ratio
+export const PHONE_W = Math.round(PHONE_H * 0.479);
 
-// Render at 4x resolution for better quality (antialiasing) AND to provide
-// enough buffer space for rotations and scaling without clipping.
-export const RENDER_MULTIPLIER = 4; // Important: quality
+export const RENDER_MULTIPLIER = 4;
 export const RENDER_W = PHONE_W * RENDER_MULTIPLIER;
 export const RENDER_H = PHONE_H * RENDER_MULTIPLIER;
 
+export const DEVICE_3D_DIMENSIONS: Record<string, { width: number; height: number }> = {
+    'phone':              { width: PHONE_W, height: PHONE_H },
+    'iphone':             { width: PHONE_W, height: PHONE_H },
+    'iphone-13-pro-max':  { width: 480,     height: 1000 },
+    'samsung':            { width: PHONE_W, height: PHONE_H },
+    'laptop':             { width: 1500,    height: 1035 },
+};
+
 // Camera settings (based on appscreen-main reference: fov=20, position=[-3,-1,4])
 export const CAM_FOV = 20;
-export const CAM_Z = 6; // Closer to model (reference uses position.z = 4)
+export const CAM_Z = 6;
 
-// ─── Device configs ───────────────────────────────────────────────────────────
-// For iPhone/Samsung the GLB doesn't expose a usable screen UV, so we add a
-// custom PlaneGeometry on top of the glass with the correct aspect ratio.
 export type DeviceKey = "iphone" | "samsung" | "phone";
 
 export interface DeviceConfig {
@@ -69,7 +61,6 @@ export function getDeviceFromModelUrl(modelUrl: string | undefined): DeviceKey {
   return "phone";
 }
 
-// ─── Screen canvas helper ────────────────────────────────────────────────────
 export interface ImageMaskConfigLike {
   enabled?: boolean;
   top?: { from: number; to?: number };
@@ -157,7 +148,6 @@ export function createCoverScreenCanvas(
   return canvas;
 }
 
-// ─── GLTF URL cache ───────────────────────────────────────────────────────────
 // All models (including the default phone) are now loaded as GLB files via URL.
 // The old loadGltfGroup() / GLTFLoader.parse() path is gone; everything goes
 // through loadGltfFromUrl() which caches by URL so each file is fetched once.
@@ -203,7 +193,6 @@ export function cloneGroup(src: THREE.Group): THREE.Group {
   return cloned;
 }
 
-// ─── Math helpers ────────────────────────────────────────────────────────────
 /** Shortest arc in degrees from curRy to targetRy, result in [-180, 180] */
 export function shortArc(curRy: number, targetRy: number): number {
   return ((targetRy - curRy) % 360 + 540) % 360 - 180;
@@ -217,10 +206,6 @@ export function parseShadowColor(hex: string, opacity: number): string {
   return `rgba(${r},${g},${b},${opacity.toFixed(3)})`;
 }
 
-// ─── Crop helper ─────────────────────────────────────────────────────────────
-// Aplica un crop a una imagen y devuelve un HTMLCanvasElement con la región
-// recortada. El crop está en porcentajes (0-100). Si el crop cubre el 100%
-// o es null/undefined, devuelve la imagen original sin modificar.
 export interface CropAreaLike {
   x: number;
   y: number;
@@ -244,7 +229,6 @@ export function applyCropToImage(
     srcH = source.height || 1;
   }
 
-  // Si el crop está vacío o cubre el 100%, no hace nada
   const isFullCrop = !cropArea
     || (cropArea.x <= 0 && cropArea.y <= 0
         && cropArea.width >= 100 && cropArea.height >= 100);
@@ -256,7 +240,6 @@ export function applyCropToImage(
     return out;
   }
 
-  // Calcular región en píxeles. Clamp para no salirnos de la imagen.
   const x = Math.max(0, Math.min(100, cropArea.x));
   const y = Math.max(0, Math.min(100, cropArea.y));
   const width = Math.max(1, Math.min(100 - x, cropArea.width));

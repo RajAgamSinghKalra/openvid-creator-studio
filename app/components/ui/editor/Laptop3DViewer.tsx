@@ -35,6 +35,8 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export interface Laptop3DApi {
   renderAt: (width: number, height: number) => void;
+  restorePreview: () => void;
+  hasBuiltInShadow: boolean;
 }
 
 interface Props {
@@ -111,21 +113,29 @@ function ModelScene({
   });
 
   useEffect(() => {
+    const previewW = RENDER_W;
+    const previewH = RENDER_H;
     const api: Laptop3DApi = {
       renderAt: (w, h) => {
         if (!cameraRef.current) return;
-        const oldAspect = cameraRef.current.aspect;
         cameraRef.current.aspect = w / h;
         cameraRef.current.updateProjectionMatrix();
 
+        gl.setPixelRatio(2);
         gl.setSize(w, h, false);
+        if (videoTextureRef.current) {
+          videoTextureRef.current.needsUpdate = true;
+        }
         gl.render(scene, cameraRef.current);
-
-        cameraRef.current.aspect = oldAspect;
+      },
+      restorePreview: () => {
+        if (!cameraRef.current) return;
+        cameraRef.current.aspect = RENDER_W / RENDER_H;
         cameraRef.current.updateProjectionMatrix();
-
+        gl.setPixelRatio(RENDER_MULTIPLIER);
         gl.setSize(RENDER_W, RENDER_H, false);
       },
+      hasBuiltInShadow: false,
     };
     onApi?.(api);
     return () => onApi?.(null);

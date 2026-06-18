@@ -7,6 +7,7 @@ import DonationCard from "@/app/components/ui/home/DonationCard";
 import EditorPreview from "@/app/components/ui/home/EditorPreview";
 import VideoHero from "@/app/components/ui/home/VideoHero";
 import BannerCTA from "@/app/components/ui/home/BannerCTA";
+import FeaturesGrid from "@/app/components/ui/home/Featuresgrid";
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -85,16 +86,17 @@ export default async function Home({ params }: Props) {
         </div>
 
         <section className="w-full py-10 sm:py-16" aria-label="How it works">
-          <div className="max-w-6xl mx-auto px-6 xl:px-0">
+          <div className="max-w-7xl mx-auto px-6 xl:px-0">
             <InteractiveRecordingSteps />
           </div>
         </section>
 
-        <div className="relative overflow-hidden bg-gradient-radial-primary w-full sm:pt-24">
+        <div className="relative overflow-hidden bg-gradient-radial-primary w-full">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-250 h-[150%] rounded-[100%] blur-xl pointer-events-none" aria-hidden="true"></div>
           <section className="w-full" aria-label="Editor features and demos">
-            <div className="w-full mx-auto bg-[url('/images/pages/dots.svg')] bg-no-repeat bg-[size:68%] bg-center">
-              <EditorPreview />
+            <div className="w-full mx-auto">
+              {/* <EditorPreview /> */}
+              <FeaturesGrid />
             </div>
             <CarouselDemos />
             <section className="pt-4 pb-10 sm:py-2 w-full mb-0 sm:mb-42" aria-label="Support the project">

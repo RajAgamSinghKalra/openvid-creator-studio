@@ -24,6 +24,8 @@ import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
 
 export interface Phone3DApi {
     renderAt: (width: number, height: number) => void;
+    restorePreview: () => void;
+    hasBuiltInShadow: boolean;
 }
 
 interface Props {
@@ -114,18 +116,29 @@ function ModelScene({
     });
 
     useEffect(() => {
+        const previewW = gl.domElement.clientWidth || PHONE_W;
+        const previewH = gl.domElement.clientHeight || PHONE_H;
         const api: Phone3DApi = {
             renderAt: (w, h) => {
                 if (!cameraRef.current) return;
                 const oldAspect = cameraRef.current.aspect;
                 cameraRef.current.aspect = w / h;
                 cameraRef.current.updateProjectionMatrix();
+                gl.setPixelRatio(2);
                 gl.setSize(w, h, false);
+                if (videoTextureRef.current) {
+                    videoTextureRef.current.needsUpdate = true;
+                }
                 gl.render(scene, cameraRef.current);
-                cameraRef.current.aspect = oldAspect;
-                cameraRef.current.updateProjectionMatrix();
-                gl.setSize(gl.domElement.clientWidth || PHONE_W, gl.domElement.clientHeight || PHONE_H, false);
             },
+            restorePreview: () => {
+                if (!cameraRef.current) return;
+                cameraRef.current.aspect = previewW / previewH;
+                cameraRef.current.updateProjectionMatrix();
+                gl.setPixelRatio(3);
+                gl.setSize(previewW, previewH, false);
+            },
+            hasBuiltInShadow: false,
         };
         onApi?.(api);
         return () => onApi?.(null);

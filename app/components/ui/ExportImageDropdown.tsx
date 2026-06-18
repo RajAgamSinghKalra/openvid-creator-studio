@@ -190,7 +190,7 @@ export function ExportImageDropdown({
 
             <PopoverContent
                 align="end"
-                className="w-80 bg-black border-white/15 text-white shadow-2xl p-0 rounded-xl overflow-hidden"
+                className="w-80 bg-black border-white/15 text-white shadow-2xl p-0 rounded-xl overflow-hidden z-999999"
             >
                 <div className="px-6 py-4 border-b border-white/10 flex justify-between items-center bg-white/3">
                     <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/50">

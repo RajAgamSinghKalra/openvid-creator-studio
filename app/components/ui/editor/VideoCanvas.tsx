@@ -25,7 +25,7 @@ import DropImage from "@/components/ui/DropImage";
 import { LayersPanel } from "./LayersPanel";
 import { Icon } from "@iconify/react";
 import { useMockup3dContext } from "@/app/contexts/Mockup3dContext";
-import { PHONE_H, PHONE_W } from "@/lib/phone3d.utils";
+import { PHONE_H, PHONE_W, DEVICE_3D_DIMENSIONS } from "@/lib/phone3d.utils";
 
 export type { VideoCanvasHandle, VideoCanvasProps };
 
@@ -122,7 +122,7 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
     const ctrlScrollWheelRef = useRef<((e: WheelEvent) => void) | null>(null);
     // WebGL canvas from image phone Phone3DViewer, captured via onMount prop for export
     const imagePhoneCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const imagePhoneApiRef = useRef<{ renderAt: (w: number, h: number) => void } | null>(null);
+    const imagePhoneApiRef = useRef<{ renderAt: (w: number, h: number) => void; restorePreview: () => void; hasBuiltInShadow?: boolean } | null>(null);
     const [activePhoneDevice, setActivePhoneDevice] = useState<string | null>(null);
     const [phoneTransitioning, setPhoneTransitioning] = useState(false);
 
@@ -1152,7 +1152,11 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
             drawBg(ctx);
             await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, true);
             const { containerX: cX, containerY: cY, containerWidth: cW, containerHeight: cH } = computeContainer();
-            drawMockupAndMedia(ctx, cX, cY, cW, cH, image!, true);
+            // Only draw the 2D mockup + media when the 3D phone overlay is NOT active.
+            // In the preview, CSS opacity:0 hides the video layer; here we skip drawing it.
+            if (!imagePhoneActive) {
+                drawMockupAndMedia(ctx, cX, cY, cW, cH, image!, true);
+            }
             await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, false);
             // ── Composite image phone mockup (WebGL snapshot) onto export canvas ──
             if (imagePhoneActive && imagePhoneCanvasRef.current) {
@@ -1161,14 +1165,33 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
                 const pxScale = canvasWidth / domW;
                 const phoneCx = canvasWidth / 2 + imagePhoneX * pxScale;
                 const phoneCy = canvasHeight / 2 + imagePhoneY * pxScale;
-                const drawW = PHONE_W * imagePhoneScale * pxScale;
-                const drawH = PHONE_H * imagePhoneScale * pxScale;
+                // Use device-specific dimensions instead of generic PHONE_W/H
+                const deviceDims = DEVICE_3D_DIMENSIONS[imagePhoneDevice] ?? { width: PHONE_W, height: PHONE_H };
+                const drawW = deviceDims.width * imagePhoneScale * pxScale;
+                const drawH = deviceDims.height * imagePhoneScale * pxScale;
+                // Paint CSS-shadow replica as a 2D radial gradient underneath the model,
+                // but only for devices whose 3D viewer doesn't already render ContactShadows.
+                const hasBuiltInShadow = imagePhoneApiRef.current?.hasBuiltInShadow ?? false;
+                if (imagePhoneShadow > 0.01 && !hasBuiltInShadow) {
+                    const sT = imagePhoneShadow * imagePhoneShadow;
+                    const sBlur = sT * 60;
+                    const sOpacity = sT * 0.7;
+                    const shadowEllipseW = drawW * (0.6 - sT * 0.1);
+                    const shadowEllipseH = Math.max(4, sBlur * 0.55) * pxScale;
+                    const shadowCenterY = phoneCy + drawH / 2 + sBlur * 0.2 * pxScale;
+                    ctx.save();
+                    ctx.globalAlpha = sOpacity;
+                    ctx.filter = `blur(${Math.max(2, sBlur * 0.6) * pxScale}px)`;
+                    ctx.beginPath();
+                    ctx.ellipse(phoneCx, shadowCenterY, shadowEllipseW / 2, shadowEllipseH / 2, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = imagePhoneShadowColor;
+                    ctx.fill();
+                    ctx.restore();
+                }
                 // Re-render the WebGL canvas at the target export resolution
-                // to avoid the pixelation that comes from upscaling a 595×765
-                // buffer. The Phone3DViewer restores the buffer to preview size
-                // after this call so the on-screen preview is unaffected.
                 imagePhoneApiRef.current?.renderAt(drawW, drawH);
                 ctx.drawImage(phoneGL, phoneCx - drawW / 2, phoneCy - drawH / 2, drawW, drawH);
+                imagePhoneApiRef.current?.restorePreview();
             }
             ctx.restore();
             return;
@@ -1245,21 +1268,23 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
         await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, true);
         ctx.restore();
 
+        await drawCameraOverlay(ctx, canvasWidth, canvasHeight);
+
         const { containerX, containerY, containerWidth, containerHeight } = computeContainer();
 
         if (has3DEffect && fgCanvas && fgCtx) {
             fgCtx.save();
             fgCtx.translate(fgOffsetX, fgOffsetY);
-            drawMockupAndMedia(fgCtx, containerX, containerY, containerWidth, containerHeight, video!, false);
+            if (!imagePhoneActive) {
+                drawMockupAndMedia(fgCtx, containerX, containerY, containerWidth, containerHeight, video!, false);
+            }
+            // ── Phone 3D encima del video, con zoom aplicado ──
+            if (imagePhoneActive && imagePhoneCanvasRef.current) {
+                drawPhone3DCompositeWithZoom(ctx, canvasWidth, canvasHeight, frameTime, zoomState);
+
+            }
             fgCtx.restore();
-
-            applyPerspective3D(
-                fgCanvas,
-                zoomState.rotateX,
-                zoomState.rotateY,
-                zoomState.perspective * BLEED_FACTOR
-            );
-
+            applyPerspective3D(fgCanvas, zoomState.rotateX, zoomState.rotateY, zoomState.perspective * BLEED_FACTOR);
             ctx.save();
             applyVideoZoom(ctx);
             ctx.drawImage(fgCanvas, -fgOffsetX, -fgOffsetY, fgWidth, fgHeight);
@@ -1279,7 +1304,9 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
                 if (vlCtx) {
                     vlCtx.imageSmoothingEnabled = true;
                     vlCtx.imageSmoothingQuality = 'high';
-                    drawMockupAndMedia(vlCtx, containerX, containerY, containerWidth, containerHeight, video!, false);
+                    if (!imagePhoneActive) {
+                        drawMockupAndMedia(vlCtx, containerX, containerY, containerWidth, containerHeight, video!, false);
+                    }
 
                     vlCtx.globalCompositeOperation = 'destination-in';
                     const vm = videoMaskConfig!;
@@ -1339,11 +1366,26 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
                     ctx.drawImage(videoLayer, 0, 0);
                     ctx.restore();
                 }
+                // ── Mockup 3D FUERA del zoom — overlay independiente ──
+                if (imagePhoneActive && imagePhoneCanvasRef.current) {
+                    drawPhone3DCompositeWithZoom(ctx, canvasWidth, canvasHeight, frameTime, zoomState);
+
+                }
+
             } else {
                 ctx.save();
                 applyVideoZoom(ctx);
-                drawMockupAndMedia(ctx, containerX, containerY, containerWidth, containerHeight, video!, false);
+                if (!imagePhoneActive) {
+                    drawMockupAndMedia(ctx, containerX, containerY, containerWidth, containerHeight, video!, false);
+                }
                 ctx.restore();
+
+                // ── Dibuja el mockup 3D SIN zoom del fragmento (es un overlay independiente) ──
+                if (imagePhoneActive && imagePhoneCanvasRef.current) {
+                    // SIN ctx.save/applyVideoZoom — posición absoluta en el canvas
+                    drawPhone3DCompositeWithZoom(ctx, canvasWidth, canvasHeight, frameTime, zoomState);
+
+                }
             }
         }
 
@@ -1355,6 +1397,66 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
         await drawCameraOverlay(ctx, canvasWidth, canvasHeight);
     };
 
+    const drawPhone3DCompositeWithZoom = (
+        c: CanvasRenderingContext2D,
+        canvasWidth: number,
+        canvasHeight: number,
+        _frameTime: number,
+        zs: { scale: number; focusX: number; focusY: number },  // ← nuevo parámetro
+    ) => {
+        const phoneGL = imagePhoneCanvasRef.current!;
+        const domW = canvasDimensions?.width ?? canvasWidth;
+        const pxScale = canvasWidth / domW;
+
+        // Zoom del fragmento activo — recibido como parámetro, no del closure
+        const zScale = zs.scale;
+        const focusPxX = (zs.focusX / 100) * canvasWidth;
+        const focusPxY = (zs.focusY / 100) * canvasHeight;
+        const centerX = canvasWidth / 2;
+        const centerY = canvasHeight / 2;
+
+        // Posición base del mockup (sin zoom)
+        const baseCx = centerX + imagePhoneX * pxScale;
+        const baseCy = centerY + imagePhoneY * pxScale;
+
+        // Aplicar la misma transformación que applyVideoZoom:
+        // newPos = (base - focusPx) * scale + center
+        const phoneCx = (baseCx - focusPxX) * zScale + centerX;
+        const phoneCy = (baseCy - focusPxY) * zScale + centerY;
+
+        // Tamaño también escala con el zoom
+        const deviceDims = DEVICE_3D_DIMENSIONS[imagePhoneDevice] ?? { width: PHONE_W, height: PHONE_H };
+        const drawW = deviceDims.width * imagePhoneScale * pxScale * zScale;
+        const drawH = deviceDims.height * imagePhoneScale * pxScale * zScale;
+
+        // Sombra de suelo
+        const hasBuiltInShadow = imagePhoneApiRef.current?.hasBuiltInShadow ?? false;
+        if (imagePhoneShadow > 0.01 && !hasBuiltInShadow) {
+            const sT = imagePhoneShadow * imagePhoneShadow;
+            const sBlur = sT * 60;
+            const sOpacity = sT * 0.7;
+            c.save();
+            c.globalAlpha = sOpacity;
+            c.filter = `blur(${Math.max(2, sBlur * 0.6) * pxScale}px)`;
+            c.beginPath();
+            c.ellipse(
+                phoneCx,
+                phoneCy + drawH / 2 + sBlur * 0.2 * pxScale,
+                drawW * (0.6 - sT * 0.1) / 2,
+                Math.max(4, sBlur * 0.55) * pxScale / 2,
+                0, 0, Math.PI * 2
+            );
+            c.fillStyle = imagePhoneShadowColor;
+            c.fill();
+            c.restore();
+        }
+
+        // Renderizar WebGL
+        imagePhoneApiRef.current?.renderAt(drawW, drawH);
+        c.drawImage(phoneGL, phoneCx - drawW / 2, phoneCy - drawH / 2, drawW, drawH);
+        imagePhoneApiRef.current?.restorePreview();
+    };
+    
     const drawCameraOverlay = async (
         ctx: CanvasRenderingContext2D,
         canvasWidth: number,
@@ -1466,21 +1568,6 @@ export const VideoCanvas = forwardRef<VideoCanvasHandle, VideoCanvasProps>(funct
             }
         }
         ctx.restore();
-
-        // ── 3D phone mockup overlay for video export ──
-        // Composite the WebGL canvas snapshot just like image mode does.
-        if (imagePhoneActive && imagePhoneCanvasRef.current) {
-            const phoneGL = imagePhoneCanvasRef.current;
-            const domW = canvasDimensions?.width ?? canvasWidth;
-            const pxScale = canvasWidth / domW;
-            const phoneCx = canvasWidth / 2 + imagePhoneX * pxScale;
-            const phoneCy = canvasHeight / 2 + imagePhoneY * pxScale;
-            const drawW = PHONE_W * imagePhoneScale * pxScale;
-            const drawH = PHONE_H * imagePhoneScale * pxScale;
-            imagePhoneApiRef.current?.renderAt(drawW, drawH);
-            ctx.drawImage(phoneGL, phoneCx - drawW / 2, phoneCy - drawH / 2, drawW, drawH);
-        }
-
     };
 
     useImperativeHandle(ref, () => ({
