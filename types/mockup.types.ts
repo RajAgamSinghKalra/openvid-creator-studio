@@ -67,12 +67,10 @@ export const DEFAULT_MOCKUP_FEATURES: MockupFeatures = {
     hasHeaderOpacity: false,
 };
 
-// Helper to get mockup features with fallback to default
 export function getMockupFeatures(mockup: Mockup | undefined): MockupFeatures {
     return mockup?.features ?? DEFAULT_MOCKUP_FEATURES;
 }
 
-// Helper to get the initial config for a mockup
 export function getMockupDefaultConfig(mockup: Mockup | undefined): MockupConfig {
     return {
         ...DEFAULT_MOCKUP_CONFIG,
