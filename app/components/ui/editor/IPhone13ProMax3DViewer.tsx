@@ -2,7 +2,7 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { PerspectiveCamera, useGLTF, Environment, OrbitControls, ContactShadows } from "@react-three/drei";
-import { useEffect, useRef, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense, useLayoutEffect } from "react";
 import * as THREE from "three";
 import {
     createCoverScreenCanvas,
@@ -40,6 +40,7 @@ interface Props {
 
 const TEX_W = 1284 * 2;
 const TEX_H = 2778 * 2;
+const PLACEHOLDER_PHONE_URL = "/images/mockups-3d/placeholder-phone.avif";
 
 useGLTF.preload("/models/apple_iphone_13_pro_max.glb");
 
@@ -145,6 +146,8 @@ function ModelScene({
     const wallpaperMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
     const videoTextureRef = useRef<THREE.VideoTexture | null>(null);
     const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D();
+    const onApiRef = useRef(onApi);
+    useLayoutEffect(() => { onApiRef.current = onApi; });
 
     useFrame(() => {
         if (videoElement && videoTextureRef.current) {
@@ -153,35 +156,40 @@ function ModelScene({
     });
 
     useEffect(() => {
-        const previewW = gl.domElement.clientWidth;
-        const previewH = gl.domElement.clientHeight;
+        const capturedOnApi = onApiRef.current;
+        const RENDER_PIXEL_RATIO = 2;
         const api: IPhone13ProMax3DApi = {
             renderAt: (w, h) => {
                 const cam = cameraRef.current ?? camera;
                 if (!cam) return;
-                (cam as THREE.PerspectiveCamera).aspect = w / h;
+
+                const maxTexSize = gl.capabilities.maxTextureSize || 4096;
+                const maxDim = Math.floor(maxTexSize / RENDER_PIXEL_RATIO) - 1;
+                const safeW = Math.max(1, Math.min(Math.round(w), maxDim));
+                const safeH = Math.max(1, Math.min(Math.round(h), maxDim));
+
+                (cam as THREE.PerspectiveCamera).aspect = safeW / safeH;
                 (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
-                gl.setPixelRatio(2);
-                gl.setSize(w, h, false);
-                if (videoTextureRef.current) {
-                    videoTextureRef.current.needsUpdate = true;
-                }
+                gl.setPixelRatio(RENDER_PIXEL_RATIO);
+                gl.setSize(safeW, safeH, false);
+                if (videoTextureRef.current) videoTextureRef.current.needsUpdate = true;
                 gl.render(scene, cam);
             },
             restorePreview: () => {
                 const cam = cameraRef.current ?? camera;
                 if (!cam) return;
-                const previewAspect = previewW / previewH;
-                (cam as THREE.PerspectiveCamera).aspect = previewAspect;
+                const freshW = gl.domElement.clientWidth;
+                const freshH = gl.domElement.clientHeight;
+                (cam as THREE.PerspectiveCamera).aspect = freshW / freshH;
                 (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
                 gl.setPixelRatio(3);
-                gl.setSize(previewW, previewH, false);
+                gl.setSize(freshW, freshH, false);
             },
             hasBuiltInShadow: true,
         };
-        onApi?.(api);
-        return () => onApi?.(null);
-    }, [gl, scene, camera, cameraRef, onApi]);
+        capturedOnApi?.(api);
+        return () => capturedOnApi?.(null);
+    }, [gl, scene, camera, cameraRef]);
 
     useEffect(() => {
         onLoaded?.();
@@ -244,14 +252,45 @@ function ModelScene({
         const cropKey = cropArea ? JSON.stringify(cropArea) : null;
 
         if (!imageUrl) {
-            if (mat.map) {
-                mat.map.dispose();
-                mat.map = null;
+            const placeholderKey = `__placeholder__:${PLACEHOLDER_PHONE_URL}`;
+            if (lastLoadedImageUrlRef.current === placeholderKey) return;
+
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+                const cover = createCoverScreenCanvas(img, TEX_W, TEX_H, 0, null);
+
+                if (mat.map) {
+                    mat.map.dispose();
+                    mat.map = null;
+                }
+
+                const tex = new THREE.CanvasTexture(cover);
+                tex.flipY = true;
+                tex.colorSpace = THREE.SRGBColorSpace;
+                tex.generateMipmaps = true;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.anisotropy = gl.capabilities.getMaxAnisotropy();
+                mat.map = tex;
                 mat.needsUpdate = true;
-            }
-            lastLoadedImageUrlRef.current = null;
-            lastLoadedMaskKeyRef.current = null;
-            lastLoadedCropKeyRef.current = null;
+
+                lastLoadedImageUrlRef.current = placeholderKey;
+                lastLoadedMaskKeyRef.current = null;
+                lastLoadedCropKeyRef.current = null;
+            };
+            img.onerror = () => {
+                if (mat.map) {
+                    mat.map.dispose();
+                    mat.map = null;
+                }
+                mat.color.set(0x1a1a1a);
+                mat.needsUpdate = true;
+                lastLoadedImageUrlRef.current = placeholderKey;
+            };
+            img.src = PLACEHOLDER_PHONE_URL;
             return;
         }
 
@@ -355,7 +394,6 @@ function ModelScene({
             <directionalLight position={[-4, -2, 3]} intensity={0.25} color="#c8d8ff" />
             <directionalLight position={[0, -5, 5]} intensity={0.35} />
 
-            {/* Contact shadow rendered inside the WebGL scene for export fidelity */}
             {showContactShadow && (
                 <ContactShadows
                     position={[0, -0.55, 0]}

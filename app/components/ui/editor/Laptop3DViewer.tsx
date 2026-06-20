@@ -2,7 +2,7 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { PerspectiveCamera, Environment, OrbitControls } from "@react-three/drei";
-import { useEffect, useRef, useState, Suspense, useCallback } from "react";
+import { useEffect, useRef, useState, Suspense, useCallback, useLayoutEffect } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
@@ -30,6 +30,7 @@ const screenSize: [number, number] = [29.4, 20];
 const LID_CLOSED_X = Math.PI * 0.5;
 const LID_OPEN_X = -0.2 * Math.PI;
 const DEG = Math.PI / 180;
+const PLACEHOLDER_LAPTOP_URL = "/images/mockups-3d/placeholder-laptop.avif";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -101,6 +102,8 @@ function ModelScene({
   const videoTextureRef = useRef<THREE.VideoTexture | null>(null);
   const lastLoadedUrlRef = useRef<string | null>(null);
   const lastLoadedCropKeyRef = useRef<string | null>(null);
+  const onApiRef = useRef(onApi);
+  useLayoutEffect(() => { onApiRef.current = onApi; });
 
   const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D({
     defaultEnvironment: "forest"
@@ -113,33 +116,33 @@ function ModelScene({
   });
 
   useEffect(() => {
-    const previewW = RENDER_W;
-    const previewH = RENDER_H;
+    const capturedOnApi = onApiRef.current;
     const api: Laptop3DApi = {
       renderAt: (w, h) => {
-        if (!cameraRef.current) return;
-        cameraRef.current.aspect = w / h;
-        cameraRef.current.updateProjectionMatrix();
-
+        const cam = cameraRef.current ?? camera;
+        if (!cam) return;
+        (cam as THREE.PerspectiveCamera).aspect = w / h;
+        (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
         gl.setPixelRatio(2);
         gl.setSize(w, h, false);
-        if (videoTextureRef.current) {
-          videoTextureRef.current.needsUpdate = true;
-        }
-        gl.render(scene, cameraRef.current);
+        if (videoTextureRef.current) videoTextureRef.current.needsUpdate = true;
+        gl.render(scene, cam);
       },
       restorePreview: () => {
-        if (!cameraRef.current) return;
-        cameraRef.current.aspect = RENDER_W / RENDER_H;
-        cameraRef.current.updateProjectionMatrix();
-        gl.setPixelRatio(RENDER_MULTIPLIER);
-        gl.setSize(RENDER_W, RENDER_H, false);
+        const cam = cameraRef.current ?? camera;
+        if (!cam) return;
+        const freshW = gl.domElement.clientWidth;
+        const freshH = gl.domElement.clientHeight;
+        (cam as THREE.PerspectiveCamera).aspect = freshW / freshH;
+        (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
+        gl.setPixelRatio(3);
+        gl.setSize(freshW, freshH, false);
       },
-      hasBuiltInShadow: false,
+      hasBuiltInShadow: true,
     };
-    onApi?.(api);
-    return () => onApi?.(null);
-  }, [onApi, gl, scene, cameraRef]);
+    capturedOnApi?.(api);
+    return () => capturedOnApi?.(null);
+  }, [gl, scene, camera, cameraRef]);
 
   const applyTexture = useCallback(() => {
     if (videoElement) return;
@@ -147,6 +150,53 @@ function ModelScene({
     if (!mat) return;
 
     const cropKey = cropArea ? JSON.stringify(cropArea) : null;
+
+    if (!imageUrl) {
+      const placeholderKey = `__placeholder__:${PLACEHOLDER_LAPTOP_URL}`;
+      if (lastLoadedUrlRef.current === placeholderKey) return;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const currentMat = screenMatRef.current;
+        if (!currentMat) return;
+
+        const TEX_W = RENDER_W;
+        const TEX_H = RENDER_H;
+
+        const cover = createCoverScreenCanvas(img, TEX_W, TEX_H, 0, null);
+
+        if (currentMat.map) {
+          currentMat.map.dispose();
+        }
+
+        const tex = new THREE.CanvasTexture(cover);
+        tex.flipY = false;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+
+        if (cover.width && cover.height) {
+          tex.repeat.y = ((cover.width / cover.height) / screenSize[0]) * screenSize[1];
+        }
+
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.anisotropy = gl.capabilities.getMaxAnisotropy();
+
+        currentMat.map = tex;
+        currentMat.color.set(0xffffff);
+        currentMat.needsUpdate = true;
+
+        lastLoadedUrlRef.current = placeholderKey;
+        lastLoadedCropKeyRef.current = null;
+      };
+      img.onerror = () => {
+        lastLoadedUrlRef.current = placeholderKey;
+      };
+      img.src = PLACEHOLDER_LAPTOP_URL;
+      return;
+    }
 
     if (!imageUrl) {
       if (mat.map) {

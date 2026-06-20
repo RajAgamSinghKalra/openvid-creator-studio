@@ -458,7 +458,6 @@ export default function Editor() {
             height: currentProject.imageHeight,
         });
 
-        // ── Restore motion / 3D device mockup state ────────────────────────
         if (currentProject.imagePhoneActive !== undefined) {
             setImagePhoneActive(currentProject.imagePhoneActive);
         }
@@ -865,7 +864,6 @@ export default function Editor() {
             setTimeout(() => setImageExportProgress({ status: "idle", progress: 0, message: "" }), 4000);
         }
     }, [imageUrl, imageDimensions, selectedWallpaper, aspectRatio, customDimensions, selectedElementId, selectCanvasElement]);
-    // Generate canvas snapshot for photo mode previews
     useEffect(() => {
         if (!isPhotoMode || !imageUrl || !canvasRef.current) {
             setCanvasImageUrl(null);
@@ -874,7 +872,7 @@ export default function Editor() {
 
         const generateSnapshot = async () => {
             try {
-                await canvasRef.current?.drawFrame();
+                await canvasRef.current?.drawFrame(false);
                 const exportCanvas = canvasRef.current?.getExportCanvas();
                 if (exportCanvas) {
                     const dataUrl = exportCanvas.toDataURL("image/png", 0.8);
@@ -988,7 +986,10 @@ export default function Editor() {
             }
         }
     }, [audioTracks, masterVolume]);
-
+    const selectedCanvasElement = useMemo(
+        () => canvasElements.find(el => el.id === selectedElementId) ?? null,
+        [canvasElements, selectedElementId]
+    );
     // Sync audio playback with video current time
     const syncAudioPlayback = useCallback((videoTime: number, playing: boolean) => {
         if (isExportingRef.current) return;
@@ -3047,7 +3048,7 @@ export default function Editor() {
                                         initialMockupMenuPage={initialMockupMenuPage}
                                         mockupMenuNavigationToken={mockupMenuNavigationToken}
                                         onAddCanvasElement={addCanvasElement}
-                                        selectedCanvasElement={canvasElements.find(el => el.id === selectedElementId) || null}
+                                        selectedCanvasElement={selectedCanvasElement}
                                         onUpdateCanvasElement={updateCanvasElement}
                                         onDeleteCanvasElement={deleteCanvasElement}
                                         onBringToFront={bringToFront}
@@ -3336,7 +3337,7 @@ export default function Editor() {
                 onMockupChange={handleMockupChange}
                 onMockupConfigChange={handleMockupConfigChange}
                 onAddCanvasElement={addCanvasElement}
-                selectedCanvasElement={canvasElements.find(el => el.id === selectedElementId) || null}
+                selectedCanvasElement={selectedCanvasElement}
                 onUpdateCanvasElement={updateCanvasElement}
                 onDeleteCanvasElement={deleteCanvasElement}
                 onBringToFront={bringToFront}

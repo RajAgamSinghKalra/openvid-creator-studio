@@ -2,7 +2,7 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { PerspectiveCamera, Environment, OrbitControls } from "@react-three/drei";
-import { useEffect, useRef, useState, Suspense, useCallback } from "react";
+import { useEffect, useRef, useState, Suspense, useCallback, useLayoutEffect } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
@@ -48,6 +48,7 @@ interface Props {
 
 const DEG = Math.PI / 180;
 const specificGltfCache = new Map<string, Promise<THREE.Group>>();
+const PLACEHOLDER_PHONE_URL = "/images/mockups-3d/placeholder-phone.avif";
 
 function loadSpecificGltf(url: string): Promise<THREE.Group> {
     if (!specificGltfCache.has(url)) {
@@ -106,6 +107,8 @@ function ModelScene({
     const lastLoadedCropKeyRef = useRef<string | null>(null);
     const screenAspectRef = useRef<number>(0.459);
     const flipYRef = useRef<boolean>(false);
+    const onApiRef = useRef(onApi);
+    useLayoutEffect(() => { onApiRef.current = onApi; });
 
     const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D();
 
@@ -116,49 +119,112 @@ function ModelScene({
     });
 
     useEffect(() => {
-        const previewW = gl.domElement.clientWidth || PHONE_W;
-        const previewH = gl.domElement.clientHeight || PHONE_H;
+        const capturedOnApi = onApiRef.current;
+        const RENDER_PIXEL_RATIO = 2;
         const api: Phone3DApi = {
             renderAt: (w, h) => {
-                if (!cameraRef.current) return;
-                const oldAspect = cameraRef.current.aspect;
-                cameraRef.current.aspect = w / h;
-                cameraRef.current.updateProjectionMatrix();
-                gl.setPixelRatio(2);
-                gl.setSize(w, h, false);
-                if (videoTextureRef.current) {
-                    videoTextureRef.current.needsUpdate = true;
-                }
-                gl.render(scene, cameraRef.current);
+                const cam = cameraRef.current ?? camera;
+                if (!cam) return;
+
+                const maxTexSize = gl.capabilities.maxTextureSize || 4096;
+                const maxDim = Math.floor(maxTexSize / RENDER_PIXEL_RATIO) - 1;
+                const safeW = Math.max(1, Math.min(Math.round(w), maxDim));
+                const safeH = Math.max(1, Math.min(Math.round(h), maxDim));
+
+                (cam as THREE.PerspectiveCamera).aspect = safeW / safeH;
+                (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
+                gl.setPixelRatio(RENDER_PIXEL_RATIO);
+                gl.setSize(safeW, safeH, false);
+                if (videoTextureRef.current) videoTextureRef.current.needsUpdate = true;
+                gl.render(scene, cam);
             },
             restorePreview: () => {
-                if (!cameraRef.current) return;
-                cameraRef.current.aspect = previewW / previewH;
-                cameraRef.current.updateProjectionMatrix();
+                const cam = cameraRef.current ?? camera;
+                if (!cam) return;
+                const freshW = gl.domElement.clientWidth;
+                const freshH = gl.domElement.clientHeight;
+                (cam as THREE.PerspectiveCamera).aspect = freshW / freshH;
+                (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
                 gl.setPixelRatio(3);
-                gl.setSize(previewW, previewH, false);
+                gl.setSize(freshW, freshH, false);
             },
-            hasBuiltInShadow: false,
+            hasBuiltInShadow: true,
         };
-        onApi?.(api);
-        return () => onApi?.(null);
-    }, [onApi, gl, scene, cameraRef]);
+        capturedOnApi?.(api);
+        return () => capturedOnApi?.(null);
+    }, [gl, scene, camera, cameraRef]);
 
     const applyTexture = useCallback(() => {
         if (videoElement) return;
         const mat = screenMatRef.current;
         if (!mat) return;
         const cropKey = cropArea ? JSON.stringify(cropArea) : null;
+
         if (!imageUrl) {
-            if (mat.map) {
-                mat.map.dispose();
-                mat.map = null;
-                mat.needsUpdate = true;
-            }
-            lastLoadedUrlRef.current = null;
-            lastLoadedCropKeyRef.current = null;
+            const placeholderKey = `__placeholder__:${PLACEHOLDER_PHONE_URL}`;
+            if (lastLoadedUrlRef.current === placeholderKey) return;
+
+            const device = getDeviceFromModelUrl(modelUrl);
+            const deviceConfig = deviceConfigs[device];
+            const isDefaultPhone = device === "phone";
+
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+                const currentMat = screenMatRef.current;
+                if (!currentMat) return;
+
+                let TARGET_W = 2048;
+                let TARGET_H = 0;
+                let cornerRadius = 0;
+                if (isDefaultPhone) {
+                    TARGET_W = PHONE_W * 4;
+                    TARGET_H = Math.round(TARGET_W / screenAspectRef.current);
+                } else {
+                    TARGET_H = Math.round(TARGET_W / deviceConfig.aspectRatio);
+                    cornerRadius = Math.round(TARGET_W * deviceConfig.cornerRadiusFactor);
+                }
+
+                // El placeholder no tiene cropArea ni mask — se cubre "cover" a pantalla completa
+                const cover = createCoverScreenCanvas(img, TARGET_W, TARGET_H, cornerRadius, null);
+
+                if (currentMat.map) {
+                    currentMat.map.dispose();
+                    currentMat.map = null;
+                }
+                const tex = new THREE.CanvasTexture(cover);
+                tex.flipY = flipYRef.current;
+                tex.colorSpace = THREE.SRGBColorSpace;
+                tex.generateMipmaps = true;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.anisotropy = gl.capabilities.getMaxAnisotropy();
+                currentMat.map = tex;
+                currentMat.color.set(0xffffff);
+                currentMat.needsUpdate = true;
+
+                lastLoadedUrlRef.current = placeholderKey;
+                lastLoadedCropKeyRef.current = null;
+            };
+            img.onerror = () => {
+                // Si el placeholder falla en cargar, al menos deja la pantalla
+                // en un gris neutro en vez de quedar sin textura.
+                const currentMat = screenMatRef.current;
+                if (!currentMat) return;
+                if (currentMat.map) {
+                    currentMat.map.dispose();
+                    currentMat.map = null;
+                }
+                currentMat.color.set(0x1a1a1a);
+                currentMat.needsUpdate = true;
+                lastLoadedUrlRef.current = placeholderKey;
+            };
+            img.src = PLACEHOLDER_PHONE_URL;
             return;
         }
+
         if (
             lastLoadedUrlRef.current === imageUrl &&
             lastLoadedCropKeyRef.current === cropKey &&

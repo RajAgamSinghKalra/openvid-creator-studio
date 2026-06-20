@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@iconify/react";
 import { SliderControl } from "../../../../components/ui/SliderControl";
@@ -46,29 +46,30 @@ function PositionPad({
 
   const bgLayerStyle: React.CSSProperties = backgroundUrl
     ? {
-      backgroundImage: `url('${backgroundUrl}')`,
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      backgroundRepeat: "no-repeat",
-    }
+        backgroundImage: `url('${backgroundUrl}')`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }
     : backgroundColorCss
       ? backgroundColorCss.startsWith("#") || backgroundColorCss.startsWith("rgb")
         ? { backgroundColor: backgroundColorCss }
         : {
-          backgroundImage: backgroundColorCss,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }
+            backgroundImage: backgroundColorCss,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }
       : {};
 
   return (
     <div className="relative group w-full cursor-default">
       <div
         ref={padRef}
-        className={`relative w-full rounded-[14px] overflow-hidden select-none border shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] transition-all duration-200 ${isDraggingState
-          ? "border-cyan-500/40 ring-1 ring-cyan-500/20"
-          : "border-zinc-800/50"
-          }`}
+        className={`relative w-full rounded-[14px] overflow-hidden select-none border shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] transition-all duration-200 ${
+          isDraggingState
+            ? "border-cyan-500/40 ring-1 ring-cyan-500/20"
+            : "border-zinc-800/50"
+        }`}
         style={{ height: PAD_H }}
         onPointerDown={(e) => {
           dragging.current = true;
@@ -77,7 +78,9 @@ function PositionPad({
           onDragStart?.();
           fromEvent(e);
         }}
-        onPointerMove={(e) => { if (dragging.current) fromEvent(e); }}
+        onPointerMove={(e) => {
+          if (dragging.current) fromEvent(e);
+        }}
         onPointerUp={() => {
           dragging.current = false;
           setIsDraggingState(false);
@@ -90,17 +93,23 @@ function PositionPad({
         )}
         <div className="absolute inset-0 pointer-events-none opacity-10 bg-[radial-gradient(#a1a1aa_1px,transparent_1px)] bg-size-[14px_14px]" />
 
-        <div className="absolute top-0 bottom-0 w-px bg-linear-to-b from-transparent via-white/10 to-transparent -translate-x-1/2" style={{ left: "50%" }} />
-        <div className="absolute left-0 right-0 h-px bg-linear-to-r from-transparent via-white/10 to-transparent -translate-y-1/2" style={{ top: "50%" }} />
+        <div
+          className="absolute top-0 bottom-0 w-px bg-linear-to-b from-transparent via-white/10 to-transparent -translate-x-1/2"
+          style={{ left: "50%" }}
+        />
+        <div
+          className="absolute left-0 right-0 h-px bg-linear-to-r from-transparent via-white/10 to-transparent -translate-y-1/2"
+          style={{ top: "50%" }}
+        />
 
         <div
           className="absolute pointer-events-none bg-white/10 transition-opacity -translate-x-1/2"
-          style={{ left: `${pctX * 100}%`, top: 0, bottom: 0, width: '1px' }}
+          style={{ left: `${pctX * 100}%`, top: 0, bottom: 0, width: "1px" }}
         />
 
         <div
           className="absolute pointer-events-none bg-white/10 transition-opacity -translate-y-1/2"
-          style={{ top: hy, left: 0, right: 0, height: '1px' }}
+          style={{ top: hy, left: 0, right: 0, height: "1px" }}
         />
 
         <div
@@ -116,7 +125,110 @@ function PositionPad({
         />
       </div>
     </div>
+  );
+}
 
+function ActiveDevicePreview({
+  tpl,
+}: {
+  tpl: ActiveDeviceTpl;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isHovering, setIsHovering] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isHovering) {
+      const play = async () => {
+        try {
+          await video.play();
+        } catch {
+        }
+      };
+      play();
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }, [isHovering]);
+
+  return (
+    <div
+      className="relative w-full h-86 overflow-hidden squircle-element-camera border"
+      style={{ borderColor: `${tpl.accentColor}44` }}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      <div className="absolute inset-0 bg-[#0d0d10]" />
+
+      <div
+        className="absolute inset-0 z-10 pointer-events-none"
+        style={{
+          background: `linear-gradient(135deg, ${tpl.accentColor}22 0%, transparent 70%)`,
+        }}
+      />
+
+      {tpl.posterUrl ? (
+        <img
+          src={tpl.posterUrl}
+          alt={tpl.title}
+          draggable={false}
+          className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
+            isHovering ? "scale-105 opacity-0" : "scale-100 opacity-100"
+          }`}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Icon
+            icon={tpl.icon}
+            width="48"
+            style={{ color: `${tpl.accentColor}cc` }}
+          />
+        </div>
+      )}
+
+      {tpl.videoUrl && (
+        <video
+          ref={videoRef}
+          src={tpl.videoUrl}
+          poster={tpl.posterUrl}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          onLoadedData={() => setVideoReady(true)}
+          className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
+            isHovering && videoReady ? "scale-105 opacity-100" : "scale-100 opacity-0"
+          }`}
+        />
+      )}
+
+      <div
+        className={`absolute inset-0 z-20 bg-black/20 transition-opacity duration-300 ${
+          isHovering ? "opacity-100" : "opacity-0"
+        }`}
+      />
+
+      <div className=" flex items-center gap-2 absolute  bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/80 to-transparent z-30">
+        <Icon
+          icon={tpl.icon}
+          width={14}
+        />
+        <span className="text-[11px] font-bold text-white/90 tracking-wide">
+          {tpl.title}
+        </span>
+      </div>
+
+      <div
+        className="absolute top-2 right-2 size-5 rounded-full flex items-center justify-center z-30"
+        style={{ background: tpl.accentColor }}
+      >
+        <Icon icon="mdi:check-bold" width={11} className="text-white" />
+      </div>
+    </div>
   );
 }
 
@@ -126,6 +238,8 @@ export interface ActiveDeviceTpl {
   accentColor: string;
   icon: string;
   modelUrl: string;
+  posterUrl?: string;
+  videoUrl?: string;
 }
 
 export interface Mockup3dMenuProps {
@@ -202,50 +316,19 @@ export function Mockup3dMenu({
     <>
       <div className="flex items-center gap-2 p-3 border-b border-white/6 shrink-0">
         <DetailPageHeader
-          label="Dispositivo 3D"
+          label={t("device3DTitle")}
           icon="mage:box-3d"
           onBack={onBack}
         />
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-5">
-        {activeDeviceTpl && (
-          <div
-            className="relative w-full h-70 overflow-hidden rounded-2xl border"
-            style={{ borderColor: `${activeDeviceTpl.accentColor}44` }}
-          >
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `linear-gradient(135deg, ${activeDeviceTpl.accentColor}22 0%, transparent 70%)`,
-              }}
-            />
-            <div className="absolute inset-0 bg-[#0d0d10]" style={{ zIndex: -1 }} />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Icon
-                icon={activeDeviceTpl.icon}
-                width="48"
-                style={{ color: `${activeDeviceTpl.accentColor}cc` }}
-              />
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/80 to-transparent">
-              <span className="text-[11px] font-bold text-white/90 tracking-wide">
-                {activeDeviceTpl.title}
-              </span>
-            </div>
-            <div
-              className="absolute top-2 right-2 size-5 rounded-full flex items-center justify-center"
-              style={{ background: activeDeviceTpl.accentColor }}
-            >
-              <Icon icon="mdi:check-bold" width={11} className="text-white" />
-            </div>
-          </div>
-        )}
+        {activeDeviceTpl && <ActiveDevicePreview tpl={activeDeviceTpl} />}
 
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
-              Configuración
+              {t("configuration")}
             </span>
             <button
               type="button"
@@ -253,12 +336,12 @@ export function Mockup3dMenu({
               className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white/80 transition-colors"
             >
               <Icon icon="lucide:rotate-ccw" width="11" />
-              Resetear
+              {t("reset")}
             </button>
           </div>
 
           <SliderControl
-            label="Escala"
+            label={t("scale")}
             value={Math.round(imagePhoneScale * 100)}
             min={30}
             max={300}
@@ -270,7 +353,7 @@ export function Mockup3dMenu({
           {isLaptop && (
             <SliderControl
               icon="material-symbols:laptop-chromebook-outline"
-              label="Apertura de laptop"
+              label={t("laptopOpening")}
               value={Math.round(imagePhoneOpening * 100)}
               min={0}
               max={100}
@@ -282,7 +365,7 @@ export function Mockup3dMenu({
 
           <SliderControl
             icon="mdi:blur"
-            label="Sombra"
+            label={t("shadow")}
             value={Math.round(imagePhoneShadow * 100)}
             min={0}
             max={100}
@@ -292,7 +375,7 @@ export function Mockup3dMenu({
           />
 
           <div className="flex flex-col gap-2">
-            <span className="text-xs text-white/60 font-medium">Posición</span>
+            <span className="text-xs text-white/60 font-medium">{t("position")}</span>
             <PositionPad
               x={imagePhoneX}
               y={imagePhoneY}
@@ -310,7 +393,7 @@ export function Mockup3dMenu({
           className="w-full text-xs mt-2"
         >
           <Icon icon="ph:trash-bold" width="13" aria-hidden="true" />
-          Quitar marco
+          {t("removeFrame")}
         </Button>
       </div>
     </>

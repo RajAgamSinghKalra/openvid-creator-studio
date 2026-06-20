@@ -17,14 +17,13 @@ export interface MockupMenuProps {
   mockupId?: string;
   mockupConfig?: MockupConfig;
   onMockupChange?: (mockupId: string) => void;
-  onMockupConfigChange?: (config: Partial<MockupConfig>) => void;
-  // Background props forwarded from parent (needed for PositionPad in 3D menu)
-  backgroundUrl?: string | null;
+  onMockupConfigChange?: (config: Partial<MockupConfig>) => void; backgroundUrl?: string | null;
   backgroundColorCss?: string | null;
   backgroundTab?: "wallpaper" | "image" | "color" | "unsplash";
   selectedWallpaper?: number;
   selectedImageUrl?: string;
   initialPage?: MenuPage;
+  mediaType?: "video" | "image";
 }
 
 export function MockupMenu({
@@ -38,6 +37,7 @@ export function MockupMenu({
   selectedWallpaper,
   selectedImageUrl,
   initialPage = "home",
+  mediaType = "image",
 }: MockupMenuProps) {
   const t = useTranslations("mockupMenu");
 
@@ -48,12 +48,9 @@ export function MockupMenu({
       setPage(initialPage);
     }
   }, [initialPage]);
-
-  // ── 2D popover state ──
   const [selectedCategory, setSelectedCategory] = useState<MockupCategory>("all");
   const [gridLoaded, setGridLoaded] = useState(false);
   const devicesScrollRef = useRef<HTMLDivElement>(null);
-  const [isDevicesHover, setIsDevicesHover] = useState(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -107,8 +104,6 @@ export function MockupMenu({
 
     const onWheel = (e: WheelEvent) => {
       if (el.scrollWidth <= el.clientWidth) return;
-
-      // Si ya es scroll horizontal, lo dejamos pasar
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
 
       e.preventDefault();
@@ -120,8 +115,6 @@ export function MockupMenu({
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", updateDevicesScrollState);
-
-    // estado inicial correcto al volver a home
     updateDevicesScrollState();
 
     return () => {
@@ -132,8 +125,6 @@ export function MockupMenu({
 
     return () => cancelAnimationFrame(id);
   }, [page, restoreDevicesScroll, updateDevicesScrollState]);
-
-  // ── 3D context ──
   const {
     imagePhoneActive,
     setImagePhoneActive,
@@ -156,7 +147,6 @@ export function MockupMenu({
     setImagePhoneShadowColor,
   } = useMockup3dContext();
 
-  // ── Derived ──
   const filteredMockups =
     selectedCategory === "all"
       ? MOCKUPS
@@ -167,6 +157,7 @@ export function MockupMenu({
   const activeDeviceId: ImageDeviceId | null = imagePhoneActive
     ? (imagePhoneDevice as ImageDeviceId)
     : null;
+
   const activeDeviceTpl: ActiveDeviceTpl | null = (() => {
     if (!imagePhoneActive) return null;
     const tpl = IMAGE_DEVICE_TEMPLATES.find((t) => t.id === activeDeviceId);
@@ -177,8 +168,11 @@ export function MockupMenu({
       accentColor: tpl.accentColor,
       icon: tpl.icon,
       modelUrl: tpl.modelUrl,
+      posterUrl: tpl.posterUrl,
+      videoUrl: tpl.videoUrl,
     };
   })();
+
   const isLaptop = imagePhoneActive && imagePhoneDevice === "laptop";
 
   const resolvedBackgroundUrl = (() => {
@@ -194,9 +188,7 @@ export function MockupMenu({
     return null;
   })();
 
-  const hasActiveFrame = mockupId !== "none" || imagePhoneActive;
-
-  // ── Handlers: 2D ──
+  const hasActiveFrame = mockupId !== "none" || (mediaType === "image" && imagePhoneActive);
 
   const handleMockupSelect = (id: string) => {
     onMockupChange?.(id);
@@ -210,14 +202,7 @@ export function MockupMenu({
     setTimeout(() => setGridLoaded(true), 250);
   };
 
-  // ── Handlers: 3D ──
-
   const handleDeviceClick = (id: ImageDeviceId) => {
-    // Only reset the pose when switching to a *different* device.
-    // If the user clicks the already-active device card, keep the current
-    // position/rotation/scale so they don't lose their edits.
-    // (Special case: if the device's rotation is still at the context default
-    // of 0/0 — i.e. has never been posed — apply the canonical pose once.)
     const isSameDevice = imagePhoneDevice === id;
     const isUnposed = imagePhoneRotX === 0 && imagePhoneRotY === 0;
 
@@ -244,15 +229,11 @@ export function MockupMenu({
     setPage("detail-3d");
   };
 
-  // ── Handlers: shared ──
-
   const handleRemoveAll = () => {
     onMockupChange?.("none");
     setImagePhoneActive(false);
     setPage("home");
   };
-
-  // PAGE: DETAIL 2D
 
   if (page === "detail-2d") {
     return (
@@ -265,8 +246,6 @@ export function MockupMenu({
       />
     );
   }
-
-  // PAGE: DETAIL 3D
 
   if (page === "detail-3d") {
     return (
@@ -295,23 +274,18 @@ export function MockupMenu({
     );
   }
 
-  // PAGE: HOME
-
   return (
     <div className="p-4 flex flex-col gap-6">
-      {/* Header */}
       <div className="flex items-center gap-2 text-white font-medium">
         <Icon icon="hugeicons:ai-browser" width="20" aria-hidden="true" />
         <span>{t("title")}</span>
       </div>
 
-      {/* ── 2D Section ── */}
       <div className="flex flex-col gap-3">
         <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
-          Marcos 2D
+          {t("frames2D")}
         </p>
 
-        {/* 2D selector trigger */}
         <Popover
           onOpenChange={(open) => {
             if (open && !gridLoaded) {
@@ -324,7 +298,7 @@ export function MockupMenu({
               type="button"
               className={`group relative flex items-center gap-3 p-2 squircle-element border transition-all w-full h-35 ${mockupId !== "none"
                 ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
-                : "bg-white/[0.03] border-white/[0.07] text-white/40 hover:border-white/20"
+                : "bg-white/3 border-white/[0.07] text-white/40 hover:border-white/20"
                 }`}
               aria-label={t("windowType")}
               aria-haspopup="dialog"
@@ -502,72 +476,68 @@ export function MockupMenu({
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-white/[0.06]" />
+      {mediaType === "image" && (
+        <>
+          <div className="h-px bg-white/6" />
 
-      <div className="flex flex-col gap-3">
-        <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
-          Dispositivos 3D
-        </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
+                {t("devices3D")}
+              </p>
 
-        <div
-          className="relative group"
-          onMouseEnter={() => setIsDevicesHover(true)}
-          onMouseLeave={() => setIsDevicesHover(false)}
-        >
-          <div
-            className={`pointer-events-none absolute inset-y-0 right-0 z-20 w-8 bg-gradient-to-l from-[#141417] to-transparent transition-opacity duration-200 ${canScrollRight ? "opacity-100" : "opacity-0"
-              }`}
-          />
+              <div className="flex items-center gap-2">
+                <div className="flex items-center squircle-element border border-white/8 bg-white/3 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => scrollDevices("left")}
+                    disabled={!canScrollLeft}
+                    className="flex size-7 items-center justify-center squircle-element text-white/70 transition-all hover:bg-white/6 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <Icon icon="ph:caret-left-bold" width="12" />
+                  </button>
 
-          <button
-            type="button"
-            onClick={() => scrollDevices("left")}
-            disabled={!canScrollLeft}
-            className={`absolute left-1 top-1/2 -translate-y-1/2 z-30 flex items-center justify-center size-8 rounded-full border backdrop-blur-md transition-all duration-200 ${isDevicesHover && canScrollLeft
-              ? "opacity-100 translate-x-0 bg-black/45 border-white/10 text-white/80 hover:bg-black/70 hover:text-white"
-              : "opacity-0 -translate-x-2 pointer-events-none"
-              }`}
-            aria-label="Scroll left"
-          >
-            <Icon icon="ph:caret-left-bold" width="14" />
-          </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollDevices("right")}
+                    disabled={!canScrollRight}
+                    className="flex size-7 items-center justify-center rounded-full text-white/70 transition-all hover:bg-white/6 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <Icon icon="ph:caret-right-bold" width="12" />
+                  </button>
+                </div>
+              </div>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => scrollDevices("right")}
-            disabled={!canScrollRight}
-            className={`absolute right-1 top-1/2 -translate-y-1/2 z-30 flex items-center justify-center size-8 rounded-full border backdrop-blur-md transition-all duration-200 ${isDevicesHover && canScrollRight
-              ? "opacity-100 translate-x-0 bg-black/45 border-white/10 text-white/80 hover:bg-black/70 hover:text-white"
-              : "opacity-0 translate-x-2 pointer-events-none"
-              }`}
-            aria-label="Scroll right"
-          >
-            <Icon icon="ph:caret-right-bold" width="14" />
-          </button>
-
-          <div
-            ref={devicesScrollRef}
-            className="flex gap-2 overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth pb-2 pl-1 pr-12 custom-scrollbar"
-            style={{
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-            }}
-            onScroll={handleDevicesScroll}
-          >
-            {IMAGE_DEVICE_TEMPLATES.map((tpl) => (
-              <DeviceCard
-                key={tpl.id}
-                tpl={tpl}
-                isActive={activeDeviceId === tpl.id}
-                onClick={() => handleDeviceClick(tpl.id)}
+            <div className="relative">
+              <div
+                className={`pointer-events-none absolute inset-y-0 right-0 z-20 w-12 bg-gradient-to-l from-[#141417] to-transparent transition-opacity duration-200 ${canScrollRight ? "opacity-100" : "opacity-0"
+                  }`}
               />
-            ))}
-          </div>
-        </div>
-      </div>
 
-      {/* ── Remove button (unified) ── */}
+              <div
+                ref={devicesScrollRef}
+                className="flex gap-2 overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth pb-2 pl-1 pr-12 custom-scrollbar"
+                style={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                }}
+                onScroll={handleDevicesScroll}
+              >
+                {IMAGE_DEVICE_TEMPLATES.map((tpl) => (
+                  <DeviceCard
+                    key={tpl.id}
+                    tpl={tpl}
+                    isActive={activeDeviceId === tpl.id}
+                    onClick={() => handleDeviceClick(tpl.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {hasActiveFrame && (
         <Button
           onClick={handleRemoveAll}
