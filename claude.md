@@ -262,7 +262,6 @@ openvidshot/
 │   │                                    # MockupFeatures, MockupCategory, DEFAULT_MOCKUP_CONFIG
 │   ├── motion.types.ts                  # ELIMINADO — la lógica de motion se consolidó en MockupMenu/Mockup3dContext
 │   ├── photo.types.ts                   # Preview3DConfig, ImageMaskConfig, PREVIEW_CONFIGS,
-│   │                                    # PREVIEW_TO_PHONE_OFFSET (front/top-left-angle/...)
 │   ├── player-control.types.ts          # PlayerControlsProps, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP
 │   ├── recording.types.ts               # RecordingState, RecordingResult, RecordingContextType
 │   ├── timeline.types.ts                # TrimRange, TimelineProps

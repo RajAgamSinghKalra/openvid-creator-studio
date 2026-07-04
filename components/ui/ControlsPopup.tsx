@@ -20,8 +20,8 @@ export function ControlsPopup() {
         <div
             style={{
                 position: "fixed",
-                bottom: "240px",
-                right: "325px",
+                bottom: "220px",
+                right: "290px",
                 width: "320px",
                 zIndex: 10,
             }}

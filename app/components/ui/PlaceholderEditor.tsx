@@ -125,7 +125,6 @@ export default function PlaceholderEditor({ onVideoUpload, isUploading = false, 
                 </div>
             </div>
 
-            {/* Contenedor Principal con el color de fondo del diseño base */}
             <div
                 className="flex-1 flex items-center justify-center bg-[#0a0a0a] p-12"
                 onDragEnter={handleDragEnter}
