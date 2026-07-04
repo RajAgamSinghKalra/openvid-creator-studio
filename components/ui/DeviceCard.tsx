@@ -18,13 +18,11 @@ export function DeviceCard({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     if (isHovering) {
       const play = async () => {
         try {
           await video.play();
-        } catch {
-        }
+        } catch {}
       };
       play();
     } else {
@@ -32,17 +30,19 @@ export function DeviceCard({
       video.currentTime = 0;
     }
   }, [isHovering]);
+
   return (
-    <div className="relative w-40 shrink-0 snap-start mt-0.5">
+    <div className="relative w-40 shrink-0 snap-start"> 
       <button
         type="button"
         onClick={onClick}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
-        className={`group flex h-full w-full overflow-hidden rounded-2xl border text-left transition-all duration-300 active:scale-[0.98] ${isActive
-          ? "border-white/20 bg-[#1a1a1e]"
-          : "border-white/6 bg-[#17171a] hover:border-white/20"
-          }`}
+        className={`group flex h-full w-full overflow-hidden rounded-2xl border text-left transition-all duration-300 active:scale-[0.98] ${
+          isActive
+            ? "border-white/20 bg-[#1a1a1e]"
+            : "border-white/6 bg-[#17171a] hover:border-white/20"
+        }`}
       >
         <div className="relative aspect-3/4 w-full overflow-hidden bg-[#0d0d10]">
           <div
@@ -53,15 +53,14 @@ export function DeviceCard({
                 : `linear-gradient(135deg, ${tpl.accentColor}10 0%, transparent 70%)`,
             }}
           />
-
           <img
             src={tpl.posterUrl}
             alt={tpl.title}
             draggable={false}
-            className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${isHovering ? "scale-105 opacity-0" : "scale-100 opacity-100"
-              }`}
+            className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
+              isHovering ? "scale-105 opacity-0" : "scale-100 opacity-100"
+            }`}
           />
-
           <video
             ref={videoRef}
             src={tpl.videoUrl}
@@ -71,36 +70,29 @@ export function DeviceCard({
             playsInline
             preload="metadata"
             onLoadedData={() => setVideoReady(true)}
-            className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${isHovering && videoReady
-              ? "scale-105 opacity-100"
-              : "scale-100 opacity-0"
-              }`}
+            className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
+              isHovering && videoReady
+                ? "scale-105 opacity-100"
+                : "scale-100 opacity-0"
+            }`}
           />
-
           <div
-            className={`absolute inset-0 z-20 bg-black/20 transition-opacity duration-300 ${isHovering ? "opacity-100" : "opacity-0"
-              }`}
+            className={`absolute inset-0 z-20 bg-black/20 transition-opacity duration-300 ${
+              isHovering ? "opacity-100" : "opacity-0"
+            }`}
           />
-
           <div
-            className={`absolute inset-x-0 bottom-0 z-30 transition-all duration-300 ${isHovering
-              ? "translate-y-0 opacity-100"
-              : "translate-y-3 opacity-0"
-              }`}
+            className={`absolute inset-x-0 bottom-0 z-30 transition-all duration-300"
+            }`}
           >
             <div className="absolute inset-0 h-24 bg-gradient-to-t from-black via-black/70 to-transparent" />
-
             <div className="relative flex items-center gap-2 p-3">
-              <Icon
-                icon={tpl.icon}
-                width={10}
-              />
-              <span className="truncate text-[10px] font-medium text-white">
+              <Icon icon={tpl.icon} width={10} />
+              <span className="truncate text-[10px] text-white">
                 {tpl.title}
               </span>
             </div>
           </div>
-
           {isActive && (
             <div
               className="absolute top-2 right-2 z-40 flex size-4 items-center justify-center rounded-full"
@@ -108,16 +100,11 @@ export function DeviceCard({
                 background: tpl.accentColor,
               }}
             >
-              <Icon
-                icon="mdi:check-bold"
-                width={8}
-                className="text-white"
-              />
+              <Icon icon="mdi:check-bold" width={8} className="text-white" />
             </div>
           )}
         </div>
       </button>
-
       {isActive && (
         <div
           className="pointer-events-none absolute inset-0 rounded-2xl"

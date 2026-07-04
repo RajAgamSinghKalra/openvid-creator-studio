@@ -30,22 +30,22 @@ import { PHONE_H, PHONE_W, DEVICE_3D_DIMENSIONS } from "@/lib/phone3d.utils";
 export type { VideoCanvasHandle, VideoCanvasProps };
 
 const Phone3DViewer = dynamic(
-    () => import("./Phone3DViewer").then((m) => ({ default: m.Phone3DViewer })),
+    () => import("./mockups-3d/Phone3DViewer").then((m) => ({ default: m.Phone3DViewer })),
     { ssr: false }
 );
 
 const Laptop3DViewer = dynamic(
-    () => import("./Laptop3DViewer").then((m) => ({ default: m.Laptop3DViewer })),
+    () => import("./mockups-3d/Laptop3DViewer").then((m) => ({ default: m.Laptop3DViewer })),
     { ssr: false }
 );
 
 const IPhone13ProMax3DViewer = dynamic(
-    () => import("./IPhone13ProMax3DViewer").then((m) => ({ default: m.IPhone13ProMax3DViewer })),
+    () => import("./mockups-3d/IPhone13ProMax3DViewer").then((m) => ({ default: m.IPhone13ProMax3DViewer })),
     { ssr: false }
 );
 
 const DoubleIPhone3DViewer = dynamic(
-    () => import("./DoubleIPhone3DViewer").then((m) => ({ default: m.DoubleIPhone3DViewer })),
+    () => import("./mockups-3d/DoubleIPhone3DViewer").then((m) => ({ default: m.DoubleIPhone3DViewer })),
     { ssr: false }
 );
 
@@ -2176,7 +2176,7 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                     pointerEvents: "none",
                                                 }}
                                             >
-                                                {/* <EditorHoverTooltip show={isVideoHovered && imagePhoneActive} /> */}
+                                                <EditorHoverTooltip show={isVideoHovered && imagePhoneActive} />
                                             </div>
                                         </div>
 

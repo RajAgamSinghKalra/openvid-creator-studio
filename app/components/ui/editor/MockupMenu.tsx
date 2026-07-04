@@ -482,13 +482,11 @@ export function MockupMenu({
       {mediaType === "image" && (
         <>
           <div className="h-px bg-white/6" />
-
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
                 {t("devices3D")}
               </p>
-
               <div className="flex items-center gap-2">
                 <div className="flex items-center squircle-element border border-white/8 bg-white/3 p-0.5">
                   <button
@@ -499,7 +497,6 @@ export function MockupMenu({
                   >
                     <Icon icon="ph:caret-left-bold" width="12" />
                   </button>
-
                   <button
                     type="button"
                     onClick={() => scrollDevices("right")}
@@ -517,10 +514,9 @@ export function MockupMenu({
                 className={`pointer-events-none absolute inset-y-0 right-0 z-20 w-12 bg-gradient-to-l from-[#141417] to-transparent transition-opacity duration-200 ${canScrollRight ? "opacity-100" : "opacity-0"
                   }`}
               />
-
               <div
                 ref={devicesScrollRef}
-                className="flex gap-2 overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth pb-2 pl-1 pr-12 custom-scrollbar"
+                className="grid grid-rows-2 grid-flow-col gap-2 overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth pb-2 pl-1 pr-12 custom-scrollbar"
                 style={{
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",

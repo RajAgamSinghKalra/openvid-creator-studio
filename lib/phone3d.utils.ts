@@ -54,8 +54,8 @@ export const deviceConfigs: Record<DeviceKey, DeviceConfig> = {
     cornerRadiusFactor: 0.04,
   },
   phone: {
-    modelUrl: "/models/phone-gltf.glb", // previously loaded from JSON, now a real GLB
-    aspectRatio: 0,                     // uses model's built-in screen mesh UV
+    modelUrl: "/models/phone-gltf.glb",
+    aspectRatio: 0,
     screenHeightFactor: 0,
     screenOffset: { x: 0, y: 0, z: 0 },
     cornerRadiusFactor: 0,

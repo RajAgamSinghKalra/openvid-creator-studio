@@ -1083,12 +1083,7 @@ export default function Editor() {
         imagePhonePresetId, imagePhoneOpening, imagePhoneShadow, imagePhoneShadowColor,
         setEditorState
     ]);
-
-    // Sync editorState → individual states (only on actual undo/redo, not every state change)
-    // This effect restores all UI state when the user presses Ctrl+Z / Ctrl+Y.
-    // Without the version guard, it would also fire on every debounced state save,
-    // overwriting interactive values (like 3D rotation from OrbitControls drag)
-    // with stale snapshot data.
+  
     const prevUndoRedoVersionRef = useRef(undoRedoVersion);
     useEffect(() => {
         // Only run when undoRedoVersion actually changed (undo/redo happened)
@@ -1610,33 +1605,32 @@ export default function Editor() {
         }
 
         exportVideo({
-    quality,
-    videoBlob: videoBlob ?? undefined,
-    transparentBackground: selectedWallpaper === -1,
-    trim: trimRange.end > trimRange.start ? { start: trimRange.start, end: trimRange.end } : undefined,
-    muteOriginalAudio,
-    videoHasAudioTrack: videoHasAudioTrack,
-    audioTracks: audioTracks.map(track => {
-        const audio = uploadedAudios.find(a => a.id === track.audioId);
-        return {
-            audioUrl: audio?.url || '',
-            startTime: track.startTime,
-            duration: track.duration,
-            trimStart: track.trimStart ?? 0,
-            volume: track.volume,
-            loop: track.loop,
-        };
-    }),
-    masterVolume,
-    videoClips: videoClips.length > 0 ? videoClips : undefined,
-    videoClipBlobs: videoClips.length > 1 ? videoBlobsRef.current : undefined,
-    clipAudioStates: Object.fromEntries(clipAudioStateRef.current),
-}).finally(() => {
-    isExportingRef.current = false; // ← antes quedaba en true para siempre
-});
+            quality,
+            videoBlob: videoBlob ?? undefined,
+            transparentBackground: selectedWallpaper === -1,
+            trim: trimRange.end > trimRange.start ? { start: trimRange.start, end: trimRange.end } : undefined,
+            muteOriginalAudio,
+            videoHasAudioTrack: videoHasAudioTrack,
+            audioTracks: audioTracks.map(track => {
+                const audio = uploadedAudios.find(a => a.id === track.audioId);
+                return {
+                    audioUrl: audio?.url || '',
+                    startTime: track.startTime,
+                    duration: track.duration,
+                    trimStart: track.trimStart ?? 0,
+                    volume: track.volume,
+                    loop: track.loop,
+                };
+            }),
+            masterVolume,
+            videoClips: videoClips.length > 0 ? videoClips : undefined,
+            videoClipBlobs: videoClips.length > 1 ? videoBlobsRef.current : undefined,
+            clipAudioStates: Object.fromEntries(clipAudioStateRef.current),
+        }).finally(() => {
+            isExportingRef.current = false;
+        });
     };
 
-    // Handler para subir video (desde ToolsSidebar)
     const handleVideoUpload = useCallback(async (file: File) => {
         const hasExistingClips = videoClipsRef.current.length > 0;
 
@@ -2618,41 +2612,28 @@ export default function Editor() {
         setTimelineZoom(zoom);
     }, []);
 
-   const handleLoadedMetadata = useCallback(() => {
-    if (videoRef.current) {
-        videoRef.current.playbackRate = 1.0;
+    const handleLoadedMetadata = useCallback(() => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = 1.0;
 
-        // Durante la exportación, el pipeline reasigna video.src entre los
-        // blobs de cada clip para renderizar sus frames. Ese reasignado
-        // dispara este mismo evento nativo "loadedmetadata"; sin este guard
-        // redimensionaríamos el canvas de exportación cada vez que carga un
-        // clip con resolución nativa distinta — justo lo que provoca el
-        // error "Video sample size must remain constant" de mediabunny.
-        if (isExportingRef.current) return;
+            if (isExportingRef.current) return;
 
-        const duration = videoRef.current.duration;
-        const currentClips = videoClipsRef.current;
-        const isMultiClip = currentClips.length > 1;
+            const duration = videoRef.current.duration;
+            const currentClips = videoClipsRef.current;
+            const isMultiClip = currentClips.length > 1;
 
-        if (isFinite(duration) && duration > 0 && !isMultiClip) {
-            setVideoDuration(duration);
-            setTrimRange(prev => prev.end === 0 ? { start: 0, end: duration } : prev);
+            if (isFinite(duration) && duration > 0 && !isMultiClip) {
+                setVideoDuration(duration);
+                setTrimRange(prev => prev.end === 0 ? { start: 0, end: duration } : prev);
+            }
+
+            const vw = videoRef.current.videoWidth;
+            const vh = videoRef.current.videoHeight;
+            if (vw > 0 && vh > 0 && !isMultiClip) {
+                setVideoDimensions({ width: vw, height: vh });
+            }
         }
-
-        const vw = videoRef.current.videoWidth;
-        const vh = videoRef.current.videoHeight;
-        // Mismo razonamiento fuera de la exportación: en un track multi-clip
-        // el <video> compartido cambia de src entre clips a medida que la
-        // reproducción cruza límites de clip. Esos clips pueden tener
-        // resoluciones nativas distintas, así que el canvas/aspect-ratio
-        // debe quedar fijado con lo que se registró al construir el track
-        // (ver handleVideoUpload / handleAddVideoToTrack), no seguir al
-        // clip que esté cargado en ese instante.
-        if (vw > 0 && vh > 0 && !isMultiClip) {
-            setVideoDimensions({ width: vw, height: vh });
-        }
-    }
-}, []);
+    }, []);
 
     const skipBackward = useCallback(() => {
         if (videoRef.current) {
