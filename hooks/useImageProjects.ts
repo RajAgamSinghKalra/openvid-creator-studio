@@ -50,11 +50,12 @@ interface ImageProjectState {
     imagePhoneRotY: number;
     imagePhoneRotZ: number;
     imagePhonePerspective: number;
-    imagePhoneDevice: 'phone' | 'iphone' | 'iphone-13-pro-max' | 'iphone-17-pro-max'  | 'double_iphone_13_pro' | 'samsung' | 'laptop' ;
+    imagePhoneDevice: 'phone' | 'iphone' | 'iphone-13-pro-max' | 'iphone-17-pro-max' | 'double_iphone_13_pro' | 'samsung' | 'laptop';
     imagePhonePresetId: string;
     imagePhoneOpening: number;
     imagePhoneShadow: number;
     imagePhoneShadowColor: string;
+    imagePhoneRefWidth: number;
 }
 
 const DEFAULT_PROJECT_STATE: ImageProjectState = {
@@ -94,6 +95,7 @@ const DEFAULT_PROJECT_STATE: ImageProjectState = {
     imagePhoneOpening: 1,
     imagePhoneShadow: 0.6,
     imagePhoneShadowColor: "#000000",
+    imagePhoneRefWidth: 0,
 };
 
 export function useImageProjects() {
@@ -163,7 +165,7 @@ export function useImageProjects() {
                 imageHeight,
                 ...fullState,
             });
-            
+
             setCurrentProject(project);
             setCurrentProjectId(project.id);
             await loadProjects(false);
@@ -192,7 +194,7 @@ export function useImageProjects() {
                 setCurrentProject(null);
                 return null;
             }
-            
+
             const updated = await updateImageProject(currentProject.id, updates);
             setCurrentProject(updated);
             await loadProjects(false);
@@ -206,7 +208,7 @@ export function useImageProjects() {
     }, [currentProject, loadProjects]);
 
     const switchToProject = useCallback(async (id: string): Promise<ImageProject | null> => {
-        
+
         const project = await loadProject(id);
         return project;
     }, [loadProject]);
@@ -214,12 +216,12 @@ export function useImageProjects() {
     const removeProject = useCallback(async (id: string): Promise<void> => {
         try {
             await deleteImageProject(id);
-            
+
             if (currentProject?.id === id) {
                 setCurrentProject(null);
                 setCurrentProjectId(null);
             }
-            
+
             await loadProjects(false);
         } catch (error) {
             console.error("Error deleting project:", error);
@@ -236,7 +238,7 @@ export function useImageProjects() {
         currentProject,
         isLoading,
         isSaving,
-        
+
         loadProjects,
         loadProject,
         createProject,

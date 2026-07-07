@@ -49,6 +49,8 @@ interface Mockup3dState {
   /** Drop-shadow color (CSS color string) */
   imagePhoneShadowColor: string;
   setImagePhoneShadowColor: (v: string) => void;
+  imagePhoneRefWidth: number;
+  setImagePhoneRefWidth: (v: number) => void;
 }
 
 const Mockup3dContext = createContext<Mockup3dState | null>(null);
@@ -71,6 +73,7 @@ export function Mockup3dProvider({ children }: { children: ReactNode }) {
   const [imagePhoneOpening, setImagePhoneOpening] = useState(1);
   const [imagePhoneShadow, setImagePhoneShadow] = useState(0.6);
   const [imagePhoneShadowColor, setImagePhoneShadowColor] = useState("#000000");
+  const [imagePhoneRefWidth, setImagePhoneRefWidth] = useState(0);
 
   return (
     <Mockup3dContext.Provider value={{
@@ -90,6 +93,7 @@ export function Mockup3dProvider({ children }: { children: ReactNode }) {
       imagePhoneOpening, setImagePhoneOpening,
       imagePhoneShadow, setImagePhoneShadow,
       imagePhoneShadowColor, setImagePhoneShadowColor,
+      imagePhoneRefWidth, setImagePhoneRefWidth,
     }}>
       {children}
     </Mockup3dContext.Provider>
