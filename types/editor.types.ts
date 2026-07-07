@@ -123,4 +123,5 @@ export interface VideoCanvasProps {
     onAddElement?: (element: CanvasElement) => void;
     isPlaying?: boolean;
     onMockupClick?: (kind: "2d" | "3d") => void;
+    isRestoringProjectRef?: React.MutableRefObject<boolean>;
 }

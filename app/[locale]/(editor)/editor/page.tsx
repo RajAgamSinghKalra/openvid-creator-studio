@@ -75,6 +75,7 @@ export default function Editor() {
         imagePhoneOpening, setImagePhoneOpening,
         imagePhoneShadow, setImagePhoneShadow,
         imagePhoneShadowColor, setImagePhoneShadowColor,
+        imagePhoneRefWidth, setImagePhoneRefWidth,
     } = useMockup3dContext();
 
     // Undo/Redo system - centralized state management
@@ -322,6 +323,7 @@ export default function Editor() {
                     imagePhoneOpening,
                     imagePhoneShadow,
                     imagePhoneShadowColor,
+                    imagePhoneRefWidth,
                 });
             } catch (error) {
                 console.error("Auto-save failed:", error);
@@ -363,6 +365,7 @@ export default function Editor() {
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
+        imagePhoneRefWidth
     ]);
 
     useEffect(() => {
@@ -409,7 +412,6 @@ export default function Editor() {
     // Restore current project when project ID changes (not on every currentProject update)
     useEffect(() => {
         if (!isPhotoMode || !currentProject) return;
-
         if (lastRestoredProjectIdRef.current === currentProject.id) return;
 
         isRestoringProjectRef.current = true;
@@ -423,7 +425,6 @@ export default function Editor() {
             return;
         }
 
-        // Directly restore all states using the data URL
         setImageUrl(imageDataUrl);
         setBackgroundTab(currentProject.backgroundTab);
         setSelectedWallpaper(currentProject.selectedWallpaper);
@@ -448,9 +449,7 @@ export default function Editor() {
             height: currentProject.imageHeight,
         });
 
-        if (currentProject.imagePhoneActive !== undefined) {
-            setImagePhoneActive(currentProject.imagePhoneActive);
-        }
+        if (currentProject.imagePhoneActive !== undefined) setImagePhoneActive(currentProject.imagePhoneActive);
         if (currentProject.imagePhoneX !== undefined) setImagePhoneX(currentProject.imagePhoneX);
         if (currentProject.imagePhoneY !== undefined) setImagePhoneY(currentProject.imagePhoneY);
         if (currentProject.imagePhoneScale !== undefined) setImagePhoneScale(currentProject.imagePhoneScale);
@@ -463,11 +462,12 @@ export default function Editor() {
         if (currentProject.imagePhoneOpening !== undefined) setImagePhoneOpening(currentProject.imagePhoneOpening);
         if (currentProject.imagePhoneShadow !== undefined) setImagePhoneShadow(currentProject.imagePhoneShadow);
         if (currentProject.imagePhoneShadowColor !== undefined) setImagePhoneShadowColor(currentProject.imagePhoneShadowColor);
+        setImagePhoneRefWidth(currentProject.imagePhoneRefWidth ?? 0);
 
         setTimeout(() => {
             isRestoringProjectRef.current = false;
-        }, 500); //
-    }, [currentProject, isPhotoMode, setImagePhoneActive, setImagePhoneX, setImagePhoneY, setImagePhoneScale, setImagePhoneRotX, setImagePhoneRotY, setImagePhoneRotZ, setImagePhonePerspective, setImagePhoneDevice, setImagePhonePresetId, setImagePhoneOpening, setImagePhoneShadow, setImagePhoneShadowColor]);
+        }, 500);
+    }, [currentProject, isPhotoMode, setImagePhoneActive, setImagePhoneX, setImagePhoneY, setImagePhoneScale, setImagePhoneRotX, setImagePhoneRotY, setImagePhoneRotZ, setImagePhonePerspective, setImagePhoneDevice, setImagePhonePresetId, setImagePhoneOpening, setImagePhoneShadow, setImagePhoneShadowColor, setImagePhoneRefWidth]);
 
     // Image project handlers
     const handleSelectImageProject = useCallback(async (projectId: string) => {
@@ -567,9 +567,11 @@ export default function Editor() {
                     imagePhoneRotZ,
                     imagePhonePerspective,
                     imagePhoneDevice,
+                    imagePhonePresetId,
                     imagePhoneOpening,
                     imagePhoneShadow,
                     imagePhoneShadowColor,
+                    imagePhoneRefWidth
                 }
             );
 
@@ -609,9 +611,11 @@ export default function Editor() {
         imagePhoneRotZ,
         imagePhonePerspective,
         imagePhoneDevice,
+        imagePhonePresetId,
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
+        imagePhoneRefWidth
     ]);
 
     // Screen capture handler - now creates a project
@@ -626,7 +630,45 @@ export default function Editor() {
                     file,
                     file.name,
                     img.width,
-                    img.height
+                    img.height,
+                    {
+                        backgroundTab,
+                        selectedWallpaper,
+                        backgroundBlur,
+                        selectedImageUrl,
+                        backgroundColorConfig,
+                        padding,
+                        roundedCorners,
+                        shadows,
+                        aspectRatio,
+                        customDimensions,
+                        cropArea,
+                        mockupId,
+                        mockupConfig,
+                        canvasElements,
+                        imageTransform: {
+                            rotation: videoTransform.rotation,
+                            translateX: videoTransform.translateX,
+                            translateY: videoTransform.translateY,
+                        },
+                        imagePreview3D: imageTransform,
+                        apply3DToBackground,
+                        imageMaskConfig,
+                        imagePhoneActive,
+                        imagePhoneX,
+                        imagePhoneY,
+                        imagePhoneScale,
+                        imagePhoneRotX,
+                        imagePhoneRotY,
+                        imagePhoneRotZ,
+                        imagePhonePerspective,
+                        imagePhoneDevice,
+                        imagePhonePresetId,
+                        imagePhoneOpening,
+                        imagePhoneShadow,
+                        imagePhoneShadowColor,
+                        imagePhoneRefWidth
+                    }
                 );
 
                 if (project) {
@@ -637,7 +679,42 @@ export default function Editor() {
                 console.error("Failed to create project from screenshot:", error);
             }
         }
-    }, [captureScreen, createProject]);
+    }, [
+        captureScreen,
+        createProject,
+        backgroundTab,
+        selectedWallpaper,
+        backgroundBlur,
+        selectedImageUrl,
+        backgroundColorConfig,
+        padding,
+        roundedCorners,
+        shadows,
+        aspectRatio,
+        customDimensions,
+        cropArea,
+        mockupId,
+        mockupConfig,
+        canvasElements,
+        videoTransform,
+        imageTransform,
+        apply3DToBackground,
+        imageMaskConfig,
+        imagePhoneActive,
+        imagePhoneX,
+        imagePhoneY,
+        imagePhoneScale,
+        imagePhoneRotX,
+        imagePhoneRotY,
+        imagePhoneRotZ,
+        imagePhonePerspective,
+        imagePhoneDevice,
+        imagePhonePresetId,
+        imagePhoneOpening,
+        imagePhoneShadow,
+        imagePhoneShadowColor,
+        imagePhoneRefWidth
+    ]);
 
     // Unified image upload handler - always creates a new history entry to preserve existing projects
     const handleImageUploadToCanvas = useCallback(async (file: File) => {
@@ -685,6 +762,7 @@ export default function Editor() {
                     imagePhoneOpening,
                     imagePhoneShadow,
                     imagePhoneShadowColor,
+                    imagePhoneRefWidth
                 }
             );
 
@@ -727,6 +805,7 @@ export default function Editor() {
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
+        imagePhoneRefWidth
     ]);
 
     // Handler for drag & drop images on canvas (photo mode only)
@@ -1070,6 +1149,7 @@ export default function Editor() {
                 imagePhoneOpening,
                 imagePhoneShadow,
                 imagePhoneShadowColor,
+                imagePhoneRefWidth
             });
         }, 300);
         return () => {
@@ -1086,15 +1166,16 @@ export default function Editor() {
         videoTransform, imageTransform, apply3DToBackground, imageMaskConfig, videoMaskConfig,
         imagePhoneActive, imagePhoneX, imagePhoneY, imagePhoneScale, imagePhoneRotX,
         imagePhoneRotY, imagePhoneRotZ, imagePhonePerspective, imagePhoneDevice,
-        imagePhonePresetId, imagePhoneOpening, imagePhoneShadow, imagePhoneShadowColor,
+        imagePhonePresetId, imagePhoneOpening, imagePhoneShadow, imagePhoneShadowColor, imagePhoneRefWidth,
         setEditorState
     ]);
 
     const prevUndoRedoVersionRef = useRef(undoRedoVersion);
     useEffect(() => {
-        // Only run when undoRedoVersion actually changed (undo/redo happened)
         if (prevUndoRedoVersionRef.current === undoRedoVersion) return;
         prevUndoRedoVersionRef.current = undoRedoVersion;
+
+        isRestoringProjectRef.current = true;
 
         setBackgroundTab(editorState.backgroundTab);
         setSelectedWallpaper(editorState.selectedWallpaper);
@@ -1134,6 +1215,11 @@ export default function Editor() {
         setImagePhoneOpening(editorState.imagePhoneOpening);
         setImagePhoneShadow(editorState.imagePhoneShadow);
         setImagePhoneShadowColor(editorState.imagePhoneShadowColor);
+        setImagePhoneRefWidth(editorState.imagePhoneRefWidth ?? 0);
+
+        setTimeout(() => {
+            isRestoringProjectRef.current = false;
+        }, 500);
     }, [undoRedoVersion]);
 
     // Handler para cambiar el mockup
@@ -3154,6 +3240,7 @@ export default function Editor() {
                         activeTool={activeTool}
                         isPlaying={isPlaying}
                         onMockupClick={handleMockupClick}
+                        isRestoringProjectRef={isRestoringProjectRef}
                         layersPanelToolbar={
                             <EditorTopBar
                                 onExport={handleExport}

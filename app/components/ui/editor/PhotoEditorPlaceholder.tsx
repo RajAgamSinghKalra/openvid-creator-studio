@@ -505,10 +505,13 @@ export function PhotoEditorPlaceholder({
 
     return (
         <div className={`flex flex-col bg-black border-t border-white/10 ${className}`}>
-            <div className="h-13 shrink-0 border-t border-white/10 flex items-center justify-between px-5 bg-[#0D0D11]">
-                <div className="flex items-center gap-2 text-white/60 whitespace-nowrap">
+            {/* 👇 Contenedor principal de ajustes: Scroll activado y barra oculta */}
+            <div className="h-13 shrink-0 border-t border-white/10 flex items-center justify-between px-5 bg-[#0D0D11] overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+
+                {/* GRUPO IZQUIERDO (Añadido shrink-0 para que no se apachurre) */}
+                <div className="flex items-center gap-2 text-white/60 whitespace-nowrap shrink-0">
                     <Icon icon="mdi:tune-vertical" width={16} aria-hidden="true" />
-                    <span className="text-xs font-semibold tracking-wide uppercase">
+                    <span className="hidden sm:flex text-xs font-semibold tracking-wide uppercase">
                         {t("photoPreview.settings")}
                     </span>
 
@@ -527,8 +530,8 @@ export function PhotoEditorPlaceholder({
                                 size="sm"
                                 onClick={() => onToggle3DBackground(!apply3DToBackground)}
                                 className={`px-2.5 py-2 text-xs font-medium squircle-element transition-all ${apply3DToBackground
-                                    ? "bg-gradient-radial-primary text-cyan-500 border border-cyan-500/50!"
-                                    : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                                        ? "bg-gradient-radial-primary text-cyan-500 border border-cyan-500/50!"
+                                        : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
                                     }`}
                                 aria-label={t("photoPreview.apply3D")}
                                 aria-pressed={apply3DToBackground}
@@ -556,6 +559,7 @@ export function PhotoEditorPlaceholder({
                                     perspective: 600
                                 };
                                 setCustomConfig(defaultCustom);
+
                                 if (imagePhoneActive) {
                                     const defaults = getDefaultRotation(imagePhoneDevice);
                                     setImagePhoneRotX(defaults.rx);
@@ -574,7 +578,8 @@ export function PhotoEditorPlaceholder({
                     </TooltipAction>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                {/* GRUPO DERECHO (Quité flex-wrap, puse whitespace-nowrap, ml-4 y shrink-0) */}
+                <div className="flex items-center justify-end gap-2 whitespace-nowrap shrink-0 ml-4">
                     {onOpenCropper && (
                         <TooltipAction label={t("cropper.tooltip")}>
                             <Button
@@ -601,7 +606,7 @@ export function PhotoEditorPlaceholder({
                 </div>
             </div>
 
-            <div className="flex gap-3 px-5 overflow-x-auto custom-scrollbar mask-r-from-90% ">
+            <div className="flex gap-1 sm:gap-3 px-5 overflow-x-auto custom-scrollbar mask-r-from-90%">
                 {allPreviews.map(renderPreviewCard)}
             </div>
         </div>

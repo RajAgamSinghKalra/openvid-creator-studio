@@ -11,7 +11,6 @@ interface HistoryMenuProps {
     currentProjectId?: string | null;
     isLoading?: boolean;
     onSelectProject: (projectId: string) => void;
-    onAddToCanvas: (projectId: string) => void;
     onDeleteProject: (projectId: string) => void;
     onUploadToHistory: (file: File) => void;
 }
@@ -21,7 +20,6 @@ export function HistoryMenu({
     currentProjectId,
     isLoading = false,
     onSelectProject,
-    onAddToCanvas,
     onDeleteProject,
     onUploadToHistory,
 }: HistoryMenuProps) {
