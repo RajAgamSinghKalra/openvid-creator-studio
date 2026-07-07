@@ -1197,5 +1197,33 @@
       "svgShapes": "SVG Shapes",
       "blurEffects": "Blur Effects"
     }
+  },
+  "socialReactions": {
+    "titleLine1": "Don't just take",
+    "titleLine2": "our word for it",
+    "description": "See how founders and creators are transforming their demos with Openvid.",
+    "views": "Views",
+    "watchReel": "Watch Reel",
+    "originalAudio": "Original audio",
+    "sparklesAlt": "Sparkles decorator",
+    "posts": {
+      "post1": {
+        "text": "openvid is an open-source browser-based video editor for recording and editing screen captures with cinematic effects, no uploads required.\n\n- 4K export with H.264, WebM, GIF, and image formats\n- 3D camera movement, zoom, and perspective adjustments\n- Device mockups for Safari, Chrome, Arc, and Samsung\n- Multi-track audio with per-track and master volume control\n\nExplore it here:",
+        "timestamp": "5:30 PM · May 26, 2026"
+      },
+      "post2": {
+        "text": "🚨 SCREENSHOT ➔ POLISHED PRODUCT WALKTHROUGH VIDEO INSTANTLY\n\nThis guy built a tool that turns any app..."
+      },
+      "post3": {
+        "text": "🎥 A free and open-source tool for creating professional product demos directly from the browser.\n\nRecord the screen, add zoom effects, device frames, and 3D effects, then export the video in high quality.\n\nIf you're making tutorials or showcasing apps, this is worth trying out.\n\n🐱 GitHub: CristianOlivera1/openvid",
+        "timestamp": "4:09 AM · Jul 5, 2026"
+      },
+      "post4": {
+        "text": "🚨 SCREENSHOT ➔ POLISHED PRODUCT WALKTHROUGH VIDEO INSTANTLY\n\nThis guy built a tool that turns any app screenshot into a clean, professional motion demo video.\n\nShips with:\n- One-click screenshot ➔ full animated walkthrough\n- Smooth UI animations & feature highlights\n- No After Effects, no Premiere, no designer needed\n- Perfect for landing pages & social media launches\n\n👉 https://github.com/CristianOlivera1/openvid\n\nWho's turning screenshots into pro videos today? Drop a 🔥"
+      },
+      "post5": {
+        "text": "OpenVid Hero is an open-source, in-browser tool that converts app screenshots into professional, 4K-enabled motion demo videos without requiring external editing software. The tool features local rendering, 3D camera motions, and device mockups, offering a fast, private alternative for creating high-end product demos. Explore the project on GitHub: https://github.com/CristianOlivera1/openvid."
+      }
+    }
   }
 }

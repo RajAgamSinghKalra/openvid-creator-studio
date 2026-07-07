@@ -1175,5 +1175,33 @@
       "svgShapes": "Formas SVG",
       "blurEffects": "Efectos de desenfoque"
     }
+  },
+  "socialReactions": {
+    "titleLine1": "No te quedes solo",
+    "titleLine2": "con nuestra palabra",
+    "description": "Descubre cómo fundadores y creadores están transformando sus demos con Openvid.",
+    "views": "Vistas",
+    "watchReel": "Ver Reel",
+    "originalAudio": "Audio original",
+    "sparklesAlt": "Decorador de destellos",
+    "posts": {
+      "post1": {
+        "text": "openvid es un editor de video de código abierto en el navegador para grabar y editar capturas de pantalla con efectos cinematográficos, sin subidas a la nube.\n\n- Exportación 4K con formatos H.264, WebM, GIF e imagen\n- Movimientos de cámara 3D, zoom y ajustes de perspectiva\n- Mockups de dispositivos para Safari, Chrome, Arc y Samsung\n- Audio multipista con control de volumen por pista y maestro\n\nExplóralo aquí:",
+        "timestamp": "17:30 · 26 may. 2026"
+      },
+      "post2": {
+        "text": "🚨 CAPTURA DE PANTALLA ➔ VIDEO TUTORIAL DE PRODUCTO AL INSTANTE\n\nEste chico construyó una herramienta que convierte cualquier app..."
+      },
+      "post3": {
+        "text": "🎥 Una herramienta gratuita y de código abierto para crear demos de productos profesionales directamente en el navegador.\n\nGraba la pantalla, añade zoom, marcos de dispositivos y efectos 3D, y exporta el video en alta calidad.\n\nSi haces tutoriales o muestras aplicaciones, vale la pena probarlo.\n\n🐱 GitHub: CristianOlivera1/openvid",
+        "timestamp": "04:09 · 5 jul. 2026"
+      },
+      "post4": {
+        "text": "🚨 CAPTURA DE PANTALLA ➔ VIDEO TUTORIAL DE PRODUCTO AL INSTANTE\n\nEste chico construyó una herramienta que convierte cualquier captura de pantalla en un video demo limpio y profesional.\n\nIncluye:\n- Captura con 1 clic ➔ recorrido animado completo\n- Animaciones de UI fluidas y funciones destacadas\n- Sin After Effects, sin Premiere, sin diseñador\n- Perfecto para landing pages y redes sociales\n\n👉 https://github.com/CristianOlivera1/openvid\n\n¿Quién está convirtiendo capturas en videos pro hoy? Deja un 🔥"
+      },
+      "post5": {
+        "text": "OpenVid Hero es una herramienta de código abierto en el navegador que convierte capturas de pantalla de aplicaciones en videos demo profesionales en 4K sin requerir software de edición externo. La herramienta cuenta con renderizado local, movimientos de cámara 3D y mockups de dispositivos, ofreciendo una alternativa rápida y privada para crear demos de alta gama. Explora el proyecto en GitHub: https://github.com/CristianOlivera1/openvid."
+      }
+    }
   }
 }
