@@ -6,8 +6,7 @@ import { useEffect, useRef, useState, Suspense, useLayoutEffect } from "react";
 import * as THREE from "three";
 import { createCoverScreenCanvas, applyCropToImage, parseShadowColor, type ImageMaskConfigLike } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
-import { ControlsPopup } from "@/components/ui/ControlsPopup";
-import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
+import { EnvironmentPreset } from "@/lib/viewer-controls3d";
 
 export interface IPhone13ProMax3DApi {
   renderAt: (width: number, height: number) => void;
@@ -30,6 +29,10 @@ interface Props {
   shadowIntensity?: number;
   shadowColor?: string;
   videoElement?: HTMLVideoElement | null;
+  autoRotate?: boolean;
+  rotationSpeed?: number;
+  glow?: number;
+  environment?: EnvironmentPreset;
 }
 
 const TEX_W = 1284 * 2;
@@ -111,6 +114,10 @@ function ModelScene({
   videoElement,
   shadowIntensity = 0,
   shadowColor = "#000000",
+  autoRotate = false,
+  rotationSpeed = 3.5,
+  glow = 2.0,
+  environment = "sunset",
 }: {
   imageUrl: string | null;
   imageMaskConfig: ImageMaskConfigLike | null;
@@ -127,6 +134,10 @@ function ModelScene({
   videoElement?: HTMLVideoElement | null;
   shadowIntensity?: number;
   shadowColor?: string;
+  autoRotate?: boolean;
+  rotationSpeed?: number;
+  glow?: number;
+  environment?: EnvironmentPreset;
 }) {
   const { gl, scene, camera, invalidate } = useThree();
   const gltf = useGLTF("/models/apple_iphone_13_pro_max.glb", DRACO_URL) as unknown as {
@@ -141,12 +152,6 @@ function ModelScene({
   const lastLoadedCropKeyRef = useRef<string | null>(null);
   const wallpaperMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const videoTextureRef = useRef<THREE.VideoTexture | null>(null);
-
-  const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D({
-    defaultEnvironment: "sunset",
-    defaultGlow: 2.0,
-  });
-
   const onApiRef = useRef(onApi);
 
   useLayoutEffect(() => {
@@ -481,6 +486,10 @@ function CanvasWithLoader({
   videoElement,
   shadowIntensity,
   shadowColor,
+  autoRotate,
+  rotationSpeed,
+  glow,
+  environment,
 }: {
   imageUrl: string | null;
   imageMaskConfig: ImageMaskConfigLike | null;
@@ -497,6 +506,10 @@ function CanvasWithLoader({
   videoElement?: HTMLVideoElement | null;
   shadowIntensity?: number;
   shadowColor?: string;
+  autoRotate?: boolean;
+  rotationSpeed?: number;
+  glow?: number;
+  environment?: EnvironmentPreset;
 }) {
   const [loaded, setLoaded] = useState(false);
 
@@ -539,6 +552,10 @@ function CanvasWithLoader({
             videoElement={videoElement}
             shadowIntensity={shadowIntensity}
             shadowColor={shadowColor}
+            autoRotate={autoRotate}
+            rotationSpeed={rotationSpeed}
+            glow={glow}
+            environment={environment}
           />
         </Suspense>
       </Canvas>
@@ -564,11 +581,14 @@ export function IPhone13ProMax3DViewer({
   onRotationChange,
   onMount,
   onApi,
-  scale = 1,
   zoom = 1,
   shadowIntensity = 0,
   shadowColor = "#000000",
   videoElement = null,
+  autoRotate,
+  rotationSpeed,
+  glow,
+  environment
 }: Props) {
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -585,7 +605,6 @@ export function IPhone13ProMax3DViewer({
 
   return (
     <>
-      <ControlsPopup />
       <div
         style={{
           display: "inline-block",
@@ -647,6 +666,10 @@ export function IPhone13ProMax3DViewer({
               videoElement={videoElement}
               shadowIntensity={shadowIntensity}
               shadowColor={shadowColor}
+              autoRotate={autoRotate}
+              rotationSpeed={rotationSpeed}
+              glow={glow}
+              environment={environment}
             />
           </div>
         </div>

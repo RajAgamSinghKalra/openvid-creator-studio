@@ -12,8 +12,7 @@ import {
   type ImageMaskConfigLike,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
-import { ControlsPopup } from "@/components/ui/ControlsPopup";
-import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
+import { EnvironmentPreset } from "@/lib/viewer-controls3d";
 
 THREE.Cache.enabled = true;
 
@@ -54,6 +53,10 @@ interface Props {
   shadowIntensity?: number;
   shadowColor?: string;
   videoElement?: HTMLVideoElement | null;
+  autoRotate?: boolean;
+  rotationSpeed?: number;
+  glow?: number;
+  environment?: EnvironmentPreset;
 }
 
 let gltfCachePromise: Promise<THREE.Group> | null = null;
@@ -87,6 +90,10 @@ function ModelScene({
   onApi,
   onLoaded,
   videoElement,
+  autoRotate = false,
+  rotationSpeed = 3.5,
+  glow = 1.0,
+  environment = "forest",
 }: Props & {
   rootRef: React.MutableRefObject<THREE.Group | null>;
   cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
@@ -104,10 +111,6 @@ function ModelScene({
 
   useLayoutEffect(() => {
     onApiRef.current = onApi;
-  });
-
-  const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D({
-    defaultEnvironment: "forest",
   });
 
   useFrame(() => {
@@ -344,7 +347,7 @@ function ModelScene({
 
     const textLoader = new THREE.TextureLoader();
     const keyboardMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, toneMapped: false });
-    
+
     textLoader.load("/images/pages/keyboard-overlay.png", (tex) => {
       tex.anisotropy = gl.capabilities.getMaxAnisotropy();
       keyboardMaterial.alphaMap = tex;
@@ -558,7 +561,6 @@ export function Laptop3DViewer(props: Props) {
 
   return (
     <>
-      <ControlsPopup />
       <div
         style={{
           display: "inline-block",

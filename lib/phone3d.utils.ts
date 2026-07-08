@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { EnvironmentPreset } from "./viewer-controls3d";
 
 export interface DeviceConfig {
   modelUrl: string | null;
@@ -63,6 +64,15 @@ export const deviceConfigs: Record<DeviceKey, DeviceConfig> = {
     screenOffset: { x: 0, y: 0, z: 0 },
     cornerRadiusFactor: 0,
   },
+};
+
+export const DEVICE_VIEWER_DEFAULTS: Record<string, { environment: EnvironmentPreset; glow: number }> = {
+  double_iphone_13_pro: { environment: "studio", glow: 3.0 },
+  "iphone-13-pro-max": { environment: "sunset", glow: 2.0 },
+  "iphone-17-pro-max": { environment: "studio", glow: 1.0 },
+  laptop: { environment: "forest", glow: 1.0 },
+  phone: { environment: "studio", glow: 2.0 },
+  iphone: { environment: "studio", glow: 2.0 },
 };
 
 export function getDeviceFromModelUrl(modelUrl: string | undefined): DeviceKey {

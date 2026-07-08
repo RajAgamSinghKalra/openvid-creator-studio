@@ -25,7 +25,9 @@ import DropImage from "@/components/ui/DropImage";
 import { LayersPanel } from "./LayersPanel";
 import { Icon } from "@iconify/react";
 import { useMockup3dContext } from "@/app/contexts/Mockup3dContext";
-import { PHONE_H, PHONE_W, DEVICE_3D_DIMENSIONS } from "@/lib/phone3d.utils";
+import { PHONE_H, PHONE_W, DEVICE_3D_DIMENSIONS, DEVICE_VIEWER_DEFAULTS } from "@/lib/phone3d.utils";
+import { ViewerControls3D } from "@/lib/viewer-controls3d";
+import { ControlsPopup } from "@/components/ui/ControlsPopup";
 
 export type { VideoCanvasHandle, VideoCanvasProps };
 
@@ -362,6 +364,12 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
 
         return () => observer.disconnect();
     }, [aspectRatio, customAspectRatio]);
+
+    const deviceDefaults = DEVICE_VIEWER_DEFAULTS[imagePhoneDevice] ?? { environment: "studio", glow: 1.0 };
+    const viewer3D = ViewerControls3D({
+        defaultEnvironment: deviceDefaults.environment,
+        defaultGlow: deviceDefaults.glow,
+    });
 
     useEffect(() => {
         if (!canvasDimensions) return;
@@ -2177,6 +2185,7 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                             className="absolute inset-0 pointer-events-none"
                                             style={{ zIndex: 155, overflow: "visible" }}
                                         >
+                                            <ControlsPopup />
                                             <div
                                                 className="absolute animate-in fade-in zoom-in-95 duration-300"
                                                 style={{
@@ -2262,6 +2271,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : activePhoneDevice === "iphone-13-pro-max" ? (
                                                     <IPhone13ProMax3DViewer
@@ -2280,6 +2293,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : activePhoneDevice === "iphone-17-pro-max" ? (
                                                     <IPhone17ProMax3DViewer
@@ -2298,6 +2315,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : activePhoneDevice === "double_iphone_13_pro" ? (
                                                     <DoubleIPhone3DViewer
@@ -2312,10 +2333,13 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
-                                                        scale={1}
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : (
                                                     <Phone3DViewer
@@ -2335,6 +2359,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 )}
                                             </div>

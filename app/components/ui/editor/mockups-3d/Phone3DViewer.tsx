@@ -18,8 +18,7 @@ import {
   parseShadowColor,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
-import { ControlsPopup } from "@/components/ui/ControlsPopup";
-import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
+import { EnvironmentPreset } from "@/lib/viewer-controls3d";
 
 THREE.Cache.enabled = true;
 
@@ -45,6 +44,10 @@ interface Props {
   shadowIntensity?: number;
   shadowColor?: string;
   videoElement?: HTMLVideoElement | null;
+  autoRotate?: boolean;
+  rotationSpeed?: number;
+  glow?: number;
+  environment?: EnvironmentPreset;
 }
 
 const DEG = Math.PI / 180;
@@ -105,6 +108,10 @@ function ModelScene({
   onApi,
   onLoaded,
   videoElement,
+  autoRotate = false,
+  rotationSpeed = 3.5,
+  glow = 1.0,
+  environment = "studio",
 }: Props & {
   rootRef: React.MutableRefObject<THREE.Group | null>;
   cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
@@ -124,8 +131,6 @@ function ModelScene({
   useLayoutEffect(() => {
     onApiRef.current = onApi;
   });
-
-  const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D();
 
   useFrame(() => {
     if (videoElement && videoTextureRef.current) {
@@ -655,7 +660,7 @@ function CanvasWithLoader(
 }
 
 export function Phone3DViewer(props: Props) {
-  const { scale = 1, shadowIntensity = 0, shadowColor = "#000000" } = props;
+  const { shadowIntensity = 0, shadowColor = "#000000" } = props;
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [grabbing, setGrabbing] = useState(false);
@@ -671,7 +676,6 @@ export function Phone3DViewer(props: Props) {
 
   return (
     <>
-      <ControlsPopup />
       <div
         style={{
           display: "inline-block",
