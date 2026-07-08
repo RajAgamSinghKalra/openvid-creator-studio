@@ -109,7 +109,7 @@ const DraggableCarousel = ({ children }: { children: React.ReactNode }) => {
         onMouseLeave={handleMouseUpOrLeave}
         onMouseUp={handleMouseUpOrLeave}
         onMouseMove={handleMouseMove}
-        className="flex gap-6 overflow-x-auto hide-scroll w-full cursor-grab select-none -ml-6 sm:ml-0"
+        className="flex gap-4 sm:gap-5 overflow-x-auto hide-scroll cursor-grab select-none -ml-5 w-[calc(100%+1.25rem)] sm:ml-0"
       >
         <div
           className="flex-shrink-0 pointer-events-none"

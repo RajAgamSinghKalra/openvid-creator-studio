@@ -6,7 +6,7 @@ export default function FeaturesGrid() {
   const t = useTranslations("featuresGrid");
 
   return (
-    <section className="w-full py-24 bg-black" aria-label={t("ariaLabel")}>
+    <section className="w-full pt-24 pb-50 bg-black" aria-label={t("ariaLabel")}>
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-2xl mb-16">
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight text-white mb-6">

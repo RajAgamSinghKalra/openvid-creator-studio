@@ -7,6 +7,7 @@ import VideoHero from "@/app/components/ui/home/VideoHero";
 import BannerCTA from "@/app/components/ui/home/BannerCTA";
 import FeaturesGrid from "@/app/components/ui/home/Featuresgrid";
 import FeaturesShowcase from "@/app/components/ui/home/FeaturesShowcase";
+import SocialReactions from "@/app/components/ui/home/SocialReactions";
 
 type Props = {
   params: Promise<{ locale: string }>;
@@ -101,6 +102,10 @@ export default async function Home({ params }: Props) {
             <div className="w-full mx-auto">
               <FeaturesShowcase />
               <FeaturesGrid />
+            </div>
+
+            <div id="reactions" className="w-full">
+              <SocialReactions />
             </div>
 
             <div className="max-w-xl mx-auto px-6 pt-24 pb-50">
