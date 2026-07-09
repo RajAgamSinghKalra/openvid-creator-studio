@@ -6,8 +6,7 @@ import { useEffect, useRef, useState, Suspense, useLayoutEffect, useMemo, useCal
 import * as THREE from "three";
 import { createCoverScreenCanvas, applyCropToImage, parseShadowColor, type ImageMaskConfigLike } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
-import { ControlsPopup } from "@/components/ui/ControlsPopup";
-import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
+import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
 
 export interface IPhone17ProMax3DApi {
     renderAt: (width: number, height: number) => void;
@@ -30,6 +29,10 @@ interface Props {
     shadowIntensity?: number;
     shadowColor?: string;
     videoElement?: HTMLVideoElement | null;
+    autoRotate?: boolean;
+    rotationSpeed?: number;
+    glow?: number;
+    environment?: EnvironmentPreset;
 }
 
 const TEX_W = 1284 * 2;
@@ -56,6 +59,10 @@ function ModelScene({
     videoElement,
     shadowIntensity = 0,
     shadowColor = "#000000",
+    autoRotate = false,
+    rotationSpeed = 3.5,
+    glow = 1.0,
+    environment = "studio",
 }: {
     imageUrl: string | null;
     imageMaskConfig: ImageMaskConfigLike | null;
@@ -72,23 +79,22 @@ function ModelScene({
     videoElement?: HTMLVideoElement | null;
     shadowIntensity?: number;
     shadowColor?: string;
+    autoRotate?: boolean;
+    rotationSpeed?: number;
+    glow?: number;
+    environment?: EnvironmentPreset;
 }) {
     const { gl, scene, camera, invalidate } = useThree();
     const gltf = useGLTF("/models/iphone-17-pro-max.glb", DRACO_URL);
-    
+
     const clonedScene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
-    
+
     const orbitRef = useRef<OrbitControlsType | null>(null);
     const lastLoadedImageUrlRef = useRef<string | null>(null);
     const lastLoadedMaskKeyRef = useRef<string | null>(null);
     const lastLoadedCropKeyRef = useRef<string | null>(null);
     const wallpaperMatRef = useRef<THREE.MeshPhysicalMaterial | null>(null);
     const videoTextureRef = useRef<THREE.VideoTexture | null>(null);
-
-    const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D({
-        defaultEnvironment: "studio",
-        defaultGlow: 1.0,
-    });
 
     const onApiRef = useRef(onApi);
     useLayoutEffect(() => {
@@ -106,17 +112,17 @@ function ModelScene({
             if (child instanceof THREE.Mesh) {
                 if (child.name.includes("HkNSnYzBPABcqwM")) {
                     const targetMat = (child.material as THREE.MeshPhysicalMaterial).clone();
-                    
-                    targetMat.normalMap = null; 
+
+                    targetMat.normalMap = null;
                     targetMat.roughnessMap = null;
                     targetMat.metalnessMap = null;
                     targetMat.clearcoatMap = null;
                     targetMat.emissiveMap = null;
-                    targetMat.emissive = new THREE.Color(0x000000); 
+                    targetMat.emissive = new THREE.Color(0x000000);
                     targetMat.roughness = 0.8;
                     targetMat.metalness = 0.1;
-                    targetMat.envMapIntensity = 0.1; 
-                    
+                    targetMat.envMapIntensity = 0.1;
+
                     child.material = targetMat;
                     wallpaperMatRef.current = targetMat;
                 }
@@ -173,19 +179,19 @@ function ModelScene({
             return;
         }
         const tex = new THREE.VideoTexture(videoElement);
-        
+
         tex.flipY = false;
-        
+
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.generateMipmaps = true;
         tex.minFilter = THREE.LinearMipmapLinearFilter;
         tex.magFilter = THREE.LinearFilter;
-        
+
         if (videoTextureRef.current) {
             videoTextureRef.current.dispose();
         }
         videoTextureRef.current = tex;
-        
+
         const applyVideoTex = () => {
             const mat = wallpaperMatRef.current;
             if (!mat) return;
@@ -198,9 +204,9 @@ function ModelScene({
             if (mat.map) mat.map.needsUpdate = true;
             invalidate();
         };
-        
+
         applyVideoTex();
-        
+
         return () => {
             if (videoTextureRef.current === tex) {
                 videoTextureRef.current = null;
@@ -212,7 +218,7 @@ function ModelScene({
     useEffect(() => {
         const mat = wallpaperMatRef.current;
         if (!mat) return;
-        
+
         if (videoElement) return;
 
         const maskKey = imageMaskConfig ? JSON.stringify(imageMaskConfig) : null;
@@ -231,19 +237,19 @@ function ModelScene({
                     mat.map = null;
                 }
                 const tex = new THREE.CanvasTexture(cover);
-                
+
                 tex.flipY = false;
-              
+
                 tex.colorSpace = THREE.SRGBColorSpace;
                 tex.generateMipmaps = true;
                 tex.minFilter = THREE.LinearMipmapLinearFilter;
                 tex.magFilter = THREE.LinearFilter;
                 tex.anisotropy = gl.capabilities.getMaxAnisotropy();
-                
+
                 mat.map = tex;
                 mat.color.set(0xffffff);
                 mat.needsUpdate = true;
-                
+
                 lastLoadedImageUrlRef.current = placeholderKey;
                 lastLoadedMaskKeyRef.current = null;
                 lastLoadedCropKeyRef.current = null;
@@ -279,21 +285,21 @@ function ModelScene({
                 mat.map = null;
             }
             const tex = new THREE.CanvasTexture(cover);
-            
+
             tex.flipY = false;
-            
+
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.generateMipmaps = true;
             tex.minFilter = THREE.LinearMipmapLinearFilter;
             tex.magFilter = THREE.LinearFilter;
             tex.anisotropy = gl.capabilities.getMaxAnisotropy();
-            
+
             mat.map = tex;
             mat.color.set(0xffffff);
             mat.needsUpdate = true;
-            
+
             invalidate();
-            
+
             lastLoadedImageUrlRef.current = imageUrl;
             lastLoadedMaskKeyRef.current = maskKey;
             lastLoadedCropKeyRef.current = cropKey;
@@ -343,7 +349,7 @@ function ModelScene({
     return (
         <>
             <PerspectiveCamera ref={cameraRef} makeDefault fov={40} near={0.01} far={100} position={DEFAULT_CAMERA_POS} zoom={zoom} />
-            <Environment preset={environment as EnvironmentPreset} environmentIntensity={glow} background={false} />
+            <Environment files={HDRI_FILES[environment as EnvironmentPreset]} environmentIntensity={glow} background={false} />
             <OrbitControls ref={orbitRef} enableZoom={false} enablePan={false} enableDamping dampingFactor={0.08} autoRotate={autoRotate} autoRotateSpeed={rotationSpeed} onEnd={() => {
                 const orbit = orbitRef.current;
                 if (!orbit || !onRotationChange) return;
@@ -358,7 +364,7 @@ function ModelScene({
             {showContactShadow && (
                 <ContactShadows position={[0, -0.55, 0]} opacity={contactOpacity} scale={3} blur={contactBlur} far={4} color={shadowColor} resolution={512} />
             )}
-            
+
             <group ref={rootRef} rotation={[0, 0, 0]} scale={1} dispose={null}>
                 <primitive object={clonedScene} scale={5} rotation={[0, 0, 0]} castShadow receiveShadow />
             </group>
@@ -382,6 +388,10 @@ function CanvasWithLoader({
     videoElement,
     shadowIntensity,
     shadowColor,
+    autoRotate,
+    rotationSpeed,
+    glow,
+    environment,
 }: {
     imageUrl: string | null;
     imageMaskConfig: ImageMaskConfigLike | null;
@@ -398,10 +408,14 @@ function CanvasWithLoader({
     videoElement?: HTMLVideoElement | null;
     shadowIntensity?: number;
     shadowColor?: string;
+    autoRotate?: boolean;
+    rotationSpeed?: number;
+    glow?: number;
+    environment?: EnvironmentPreset;
 }) {
     const [loaded, setLoaded] = useState(false);
     const handleLoaded = useCallback(() => setLoaded(true), []);
-    
+
     return (
         <>
             <Canvas style={{ width: "100%", height: "100%", overflow: "visible" }} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: "high-performance" }} dpr={3} frameloop={videoElement ? "always" : "demand"} resize={{ scroll: false, debounce: { scroll: 0, resize: 0 } }} onCreated={({ gl, scene }) => {
@@ -412,7 +426,27 @@ function CanvasWithLoader({
                 onMount?.(gl.domElement);
             }} >
                 <Suspense fallback={null}>
-                    <ModelScene imageUrl={imageUrl} imageMaskConfig={imageMaskConfig} cropArea={cropArea} initialRotationX={initialRotationX} initialRotationY={initialRotationY} initialRotationZ={initialRotationZ} onRotationChange={onRotationChange} rootRef={rootRef} cameraRef={cameraRef} zoom={zoom} onApi={onApi} onLoaded={handleLoaded} videoElement={videoElement} shadowIntensity={shadowIntensity} shadowColor={shadowColor} />
+                    <ModelScene
+                        imageUrl={imageUrl}
+                        imageMaskConfig={imageMaskConfig}
+                        cropArea={cropArea}
+                        initialRotationX={initialRotationX}
+                        initialRotationY={initialRotationY}
+                        initialRotationZ={initialRotationZ}
+                        onRotationChange={onRotationChange}
+                        rootRef={rootRef}
+                        cameraRef={cameraRef}
+                        zoom={zoom}
+                        onApi={onApi}
+                        onLoaded={handleLoaded}
+                        videoElement={videoElement}
+                        shadowIntensity={shadowIntensity}
+                        shadowColor={shadowColor}
+                        autoRotate={autoRotate}
+                        rotationSpeed={rotationSpeed}
+                        glow={glow}
+                        environment={environment}
+                    />
                 </Suspense>
             </Canvas>
             {!loaded && (
@@ -438,28 +472,51 @@ export function IPhone17ProMax3DViewer({
     shadowIntensity = 0,
     shadowColor = "#000000",
     videoElement = null,
+    autoRotate,
+    rotationSpeed,
+    glow,
+    environment,
 }: Props) {
     const rootRef = useRef<THREE.Group | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const [grabbing, setGrabbing] = useState(false);
-    
+
     const t = Math.max(0, Math.min(1, shadowIntensity));
     const tEased = t * t;
     const computedBlur = tEased * 60;
     const computedOpacity = tEased * 0.7;
     const shadowRgba = shadowColor.startsWith("#") ? parseShadowColor(shadowColor, computedOpacity) : shadowColor;
     const hasShadow = t > 0.01;
-    
+
     return (
         <>
-            <ControlsPopup />
             <div style={{ display: "inline-block", transformOrigin: "top center", width: 480, height: 1000 + (hasShadow ? computedBlur * 0.8 : 0), marginTop: "200px", marginLeft: "170px" }}>
                 <div style={{ position: "relative", width: 480, height: 1000 }}>
                     {hasShadow && (
                         <div aria-hidden style={{ position: "absolute", bottom: -(computedBlur * 0.5), left: `${20 + tEased * 5}%`, width: `${60 - tEased * 10}%`, height: Math.max(4, computedBlur * 0.55), borderRadius: "50%", background: shadowRgba, filter: `blur(${Math.max(2, computedBlur * 0.6)}px)`, zIndex: 0, pointerEvents: "none" }} />
                     )}
                     <div style={{ position: "absolute", inset: "-400px", zIndex: 2, overflow: "visible", cursor: grabbing ? "grabbing" : "grab", filter: hasShadow ? `drop-shadow(0px ${(tEased * 22).toFixed(1)}px ${(tEased * 32).toFixed(1)}px ${shadowRgba})` : "none", transition: "filter 0.15s ease", pointerEvents: "auto" }} onPointerDown={() => setGrabbing(true)} onPointerUp={() => setGrabbing(false)} onPointerLeave={() => setGrabbing(false)} >
-                        <CanvasWithLoader imageUrl={imageUrl} imageMaskConfig={imageMaskConfig} cropArea={cropArea} initialRotationX={initialRotationX} initialRotationY={initialRotationY} initialRotationZ={initialRotationZ} onRotationChange={onRotationChange} rootRef={rootRef} cameraRef={cameraRef} zoom={zoom} onApi={onApi} onMount={onMount} videoElement={videoElement} shadowIntensity={shadowIntensity} shadowColor={shadowColor} />
+                        <CanvasWithLoader
+                            imageUrl={imageUrl}
+                            imageMaskConfig={imageMaskConfig}
+                            cropArea={cropArea}
+                            initialRotationX={initialRotationX}
+                            initialRotationY={initialRotationY}
+                            initialRotationZ={initialRotationZ}
+                            onRotationChange={onRotationChange}
+                            rootRef={rootRef}
+                            cameraRef={cameraRef}
+                            zoom={zoom}
+                            onApi={onApi}
+                            onMount={onMount}
+                            videoElement={videoElement}
+                            shadowIntensity={shadowIntensity}
+                            shadowColor={shadowColor}
+                            autoRotate={autoRotate}
+                            rotationSpeed={rotationSpeed}
+                            glow={glow}
+                            environment={environment}
+                        />
                     </div>
                 </div>
             </div>

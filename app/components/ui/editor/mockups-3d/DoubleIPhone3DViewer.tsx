@@ -13,8 +13,7 @@ import {
   parseShadowColor,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
-import { ControlsPopup } from "@/components/ui/ControlsPopup";
-import { EnvironmentPreset, ViewerControls3D } from "@/lib/viewer-controls3d";
+import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
 
 export interface DoubleIPhone3DApi {
   renderAt: (width: number, height: number) => void;
@@ -32,11 +31,14 @@ interface Props {
   onRotationChange?: (rx: number, ry: number) => void;
   onMount?: (canvas: HTMLCanvasElement) => void;
   onApi?: (api: DoubleIPhone3DApi | null) => void;
-  scale?: number;
   zoom?: number;
   shadowIntensity?: number;
   shadowColor?: string;
   videoElement?: HTMLVideoElement | null;
+  autoRotate?: boolean;
+  rotationSpeed?: number;
+  glow?: number;
+  environment?: EnvironmentPreset;
 }
 
 const DEG = Math.PI / 180;
@@ -61,6 +63,10 @@ function ModelScene({
   onApi,
   onLoaded,
   videoElement,
+  autoRotate = false,
+  rotationSpeed = 3.5,
+  glow = 3.0,
+  environment = "studio",
 }: Props & {
   rootRef: React.MutableRefObject<THREE.Group | null>;
   cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
@@ -71,18 +77,13 @@ function ModelScene({
   const orbitRef = useRef<OrbitControlsType | null>(null);
   const screenMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const videoTextureRef = useRef<THREE.VideoTexture | null>(null);
-  const [modelGroup, setModelGroup] = useState<THREE.Group | null>(null);
+  const modelContainerRef = useRef<THREE.Group>(null!);
   const lastLoadedUrlRef = useRef<string | null>(null);
   const lastLoadedCropKeyRef = useRef<string | null>(null);
   const onApiRef = useRef(onApi);
 
   useLayoutEffect(() => {
     onApiRef.current = onApi;
-  });
-
-  const { autoRotate, rotationSpeed, glow, environment } = ViewerControls3D({
-    defaultEnvironment: "studio",
-    defaultGlow: 3.0,
   });
 
   useFrame(() => {
@@ -127,7 +128,11 @@ function ModelScene({
         gl.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
         gl.setSize(freshW, freshH, false);
       },
-      hasBuiltInShadow: true,
+      // Este viewer no tiene ContactShadows real en la escena — su sombra es
+      // puramente CSS (drop-shadow del wrapper) y NO se captura en renderAt().
+      // Si se deja en `true`, VideoCanvas.drawFrame omite el fallback 2D y el
+      // export queda sin sombra.
+      hasBuiltInShadow: false,
     };
 
     capturedOnApi?.(api);
@@ -222,7 +227,7 @@ function ModelScene({
     }
 
     const tex = new THREE.VideoTexture(videoElement);
-    tex.flipY = false;
+    tex.flipY = true;
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -289,7 +294,11 @@ function ModelScene({
       }
     });
 
-    setModelGroup(group);
+    const container = modelContainerRef.current;
+    if (container) {
+      container.clear();
+      container.add(group);
+    }
 
     setTimeout(() => {
       if (!isMounted) return;
@@ -371,13 +380,13 @@ function ModelScene({
           onRotationChange(rx, ry);
         }}
       />
-      <Environment preset={environment as EnvironmentPreset} environmentIntensity={glow} background={false} />
+      <Environment files={HDRI_FILES[environment as EnvironmentPreset]} environmentIntensity={glow} background={false} />
       <ambientLight intensity={0.3} />
       <directionalLight position={[3, 6, 5]} intensity={0.6} />
       <directionalLight position={[-4, -2, 3]} intensity={0.25} color="#c8d8ff" />
       <directionalLight position={[0, -5, 5]} intensity={0.35} />
       <group ref={rootRef} rotation={[0, initialRotationZ * DEG, 0]}>
-        {modelGroup && <primitive object={modelGroup} />}
+        <group ref={modelContainerRef} />
       </group>
     </>
   );
@@ -431,7 +440,7 @@ function CanvasWithLoader(
 }
 
 export function DoubleIPhone3DViewer(props: Props) {
-  const { scale = 1, shadowIntensity = 0, shadowColor = "#000000" } = props;
+  const { shadowIntensity = 0, shadowColor = "#000000" } = props;
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [grabbing, setGrabbing] = useState(false);
@@ -447,7 +456,6 @@ export function DoubleIPhone3DViewer(props: Props) {
 
   return (
     <>
-      <ControlsPopup />
       <div
         style={{
           display: "inline-block",

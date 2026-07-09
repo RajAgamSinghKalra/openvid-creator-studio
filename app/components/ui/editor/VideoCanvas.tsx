@@ -23,9 +23,12 @@ import { CanvasElementsLayer } from "./CanvasElementsLayer";
 import { EditorHoverTooltip } from "./EditorHoverTooltip";
 import DropImage from "@/components/ui/DropImage";
 import { LayersPanel } from "./LayersPanel";
-import { Icon } from "@iconify/react";
 import { useMockup3dContext } from "@/app/contexts/Mockup3dContext";
-import { PHONE_H, PHONE_W, DEVICE_3D_DIMENSIONS } from "@/lib/phone3d.utils";
+import { PHONE_H, PHONE_W, DEVICE_3D_DIMENSIONS, DEVICE_VIEWER_DEFAULTS } from "@/lib/phone3d.utils";
+import { Viewer3DControls } from "@/lib/viewer-controls3d";
+import { ControlsPopup } from "@/components/ui/ControlsPopup";
+import { CanvasContextMenu } from "@/components/ui/CanvasContextMenu";
+import { Viewer3DControlsBridge } from "@/components/ui/Viewer3DControlsBridge";
 
 export type { VideoCanvasHandle, VideoCanvasProps };
 
@@ -362,6 +365,15 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
 
         return () => observer.disconnect();
     }, [aspectRatio, customAspectRatio]);
+
+    const deviceDefaults = DEVICE_VIEWER_DEFAULTS[imagePhoneDevice] ?? { environment: "studio", glow: 1.0 };
+
+    const [viewer3D, setViewer3D] = useState<Viewer3DControls>({
+        autoRotate: false,
+        rotationSpeed: 3.5,
+        glow: deviceDefaults.glow,
+        environment: deviceDefaults.environment,
+    });
 
     useEffect(() => {
         if (!canvasDimensions) return;
@@ -1683,95 +1695,19 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                 <DropImage />
             )}
 
-            {canvasCtxMenu && (() => {
-                const ids = canvasSelectedIds.length > 0 ? canvasSelectedIds : (selectedElementId ? [selectedElementId] : []);
-                const isMulti = ids.length > 1;
-                const singleId = ids[0] ?? null;
-                return (
-                    <div
-                        data-canvas-ctx-menu
-                        className="fixed z-[9999] bg-black border border-white/15 rounded-xl shadow-2xl py-1 min-w-45 overflow-hidden"
-                        style={{ left: Math.min(canvasCtxMenu.x, window.innerWidth - 196), top: Math.min(canvasCtxMenu.y, window.innerHeight - 160) }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                    >
-                        {!isMulti && singleId && (
-                            <>
-                                <button
-                                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-neutral-300 hover:bg-white/6 transition-colors text-left"
-                                    onClick={() => {
-                                        const maxZ = Math.max(...canvasElements.map(e => e.zIndex), VIDEO_Z_INDEX);
-                                        if (onElementUpdate) onElementUpdate(singleId, { zIndex: maxZ + 1 });
-                                        setCanvasCtxMenu(null);
-                                    }}
-                                >
-                                    <Icon icon="qlementine-icons:bring-to-front-16" className="size-3.5 shrink-0 opacity-70" />
-                                    Traer al frente
-                                </button>
-                                <button
-                                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-neutral-300 hover:bg-white/6 transition-colors text-left"
-                                    onClick={() => {
-                                        const el = canvasElements.find(e => e.id === singleId);
-                                        if (!el || !onElementUpdate) return;
-                                        if (el.zIndex >= VIDEO_Z_INDEX) {
-                                            onElementUpdate(singleId, { zIndex: VIDEO_Z_INDEX - 1 });
-                                        } else {
-                                            const minZ = Math.min(...canvasElements.map(e => e.zIndex));
-                                            onElementUpdate(singleId, { zIndex: Math.max(1, minZ - 1) });
-                                        }
-                                        setCanvasCtxMenu(null);
-                                    }}
-                                >
-                                    <Icon icon="qlementine-icons:bring-to-back-16" className="size-3.5 shrink-0 opacity-70" />
-                                    Enviar atrás
-                                </button>
-                                <div className="my-1 h-px bg-white/6" />
-                            </>
-                        )}
-                        {isMulti && (
-                            <>
-                                <button
-                                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-neutral-300 hover:bg-white/6 transition-colors text-left"
-                                    onClick={() => {
-                                        const newGroupId = crypto.randomUUID();
-                                        ids.forEach(id => { if (onElementUpdate) onElementUpdate(id, { groupId: newGroupId }); });
-                                        setCanvasCtxMenu(null);
-                                    }}
-                                >
-                                    <Icon icon="solar:layers-minimalistic-bold" className="size-3.5 shrink-0 opacity-70" />
-                                    Agrupar ({ids.length})
-                                </button>
-                                <button
-                                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-neutral-300 hover:bg-white/6 transition-colors text-left"
-                                    onClick={() => {
-                                        const groupIds = new Set(
-                                            ids.map(id => canvasElements.find(e => e.id === id)?.groupId).filter(Boolean)
-                                        );
-                                        canvasElements
-                                            .filter(e => e.groupId && groupIds.has(e.groupId))
-                                            .forEach(e => { if (onElementUpdate) onElementUpdate(e.id, { groupId: undefined }); });
-                                        setCanvasCtxMenu(null);
-                                    }}
-                                >
-                                    <Icon icon="solar:layers-bold" className="size-3.5 shrink-0 opacity-70" />
-                                    Desagrupar
-                                </button>
-                                <div className="my-1 h-px bg-white/6" />
-                            </>
-                        )}
-                        <button
-                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-red-400 hover:bg-red-500/10 transition-colors text-left"
-                            onClick={() => {
-                                if (onElementDelete) onElementDelete(ids.length === 1 ? ids[0] : [...ids]);
-                                setCanvasSelectedIds([]);
-                                setCanvasCtxMenu(null);
-                            }}
-                        >
-                            <Icon icon="solar:trash-bin-trash-bold" className="size-3.5 shrink-0 opacity-70" />
-                            {isMulti ? `Eliminar ${ids.length} elementos` : "Eliminar"}
-                        </button>
-                    </div>
-                );
-            })()}
+            {canvasCtxMenu && (
+                <CanvasContextMenu
+                    canvasCtxMenu={canvasCtxMenu}
+                    canvasSelectedIds={canvasSelectedIds}
+                    selectedElementId={selectedElementId}
+                    canvasElements={canvasElements}
+                    VIDEO_Z_INDEX={VIDEO_Z_INDEX}
+                    onElementUpdate={onElementUpdate}
+                    onElementDelete={onElementDelete}
+                    setCanvasCtxMenu={setCanvasCtxMenu}
+                    setCanvasSelectedIds={setCanvasSelectedIds}
+                />
+            )}
 
             <div className="absolute inset-0 pointer-events-none z-0"
                 style={{ backgroundImage: 'radial-gradient(rgb(39, 39, 42) 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
@@ -2173,10 +2109,13 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
 
                                     {/* ── 3D phone overlay (video & image mode) ── */}
                                     {imagePhoneActive && (
-                                        <div
-                                            className="absolute inset-0 pointer-events-none"
-                                            style={{ zIndex: 155, overflow: "visible" }}
-                                        >
+                                        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 155, overflow: "visible" }}>
+                                            <Viewer3DControlsBridge
+                                                environment={deviceDefaults.environment}
+                                                glow={deviceDefaults.glow}
+                                                onChange={setViewer3D}
+                                            />
+                                            <ControlsPopup />
                                             <div
                                                 className="absolute animate-in fade-in zoom-in-95 duration-300"
                                                 style={{
@@ -2262,6 +2201,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : activePhoneDevice === "iphone-13-pro-max" ? (
                                                     <IPhone13ProMax3DViewer
@@ -2280,6 +2223,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : activePhoneDevice === "iphone-17-pro-max" ? (
                                                     <IPhone17ProMax3DViewer
@@ -2298,6 +2245,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : activePhoneDevice === "double_iphone_13_pro" ? (
                                                     <DoubleIPhone3DViewer
@@ -2312,10 +2263,13 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
-                                                        scale={1}
                                                         zoom={1}
                                                         shadowIntensity={imagePhoneShadow}
                                                         shadowColor={imagePhoneShadowColor}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 ) : (
                                                     <Phone3DViewer
@@ -2335,6 +2289,10 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
+                                                        autoRotate={viewer3D.autoRotate}
+                                                        rotationSpeed={viewer3D.rotationSpeed}
+                                                        glow={viewer3D.glow}
+                                                        environment={viewer3D.environment}
                                                     />
                                                 )}
                                             </div>

@@ -37,40 +37,39 @@ function PositionPad({
 
     const fromEvent = useCallback((e: React.PointerEvent) => {
         if (!rectCache.current) return;
-        
+
         const rect = rectCache.current;
         const currentWidth = rect.width;
         const rx = Math.max(0, Math.min(currentWidth, e.clientX - rect.left));
         const ry = Math.max(0, Math.min(PAD_H, e.clientY - rect.top));
-        
+
         onChangeX(Math.round((rx / currentWidth) * X_HALF * 2 - X_HALF));
         onChangeY(Math.round((ry / PAD_H) * Y_HALF * 2 - Y_HALF));
     }, [onChangeX, onChangeY]);
 
     const bgLayerStyle: React.CSSProperties = backgroundUrl
         ? {
-              backgroundImage: `url('${backgroundUrl}')`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
-          }
+            backgroundImage: `url('${backgroundUrl}')`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+        }
         : backgroundColorCss
-        ? backgroundColorCss.startsWith("#") || backgroundColorCss.startsWith("rgb")
-            ? { backgroundColor: backgroundColorCss }
-            : {
-                  backgroundImage: backgroundColorCss,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-              }
-        : {};
+            ? backgroundColorCss.startsWith("#") || backgroundColorCss.startsWith("rgb")
+                ? { backgroundColor: backgroundColorCss }
+                : {
+                    backgroundImage: backgroundColorCss,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                }
+            : {};
 
     return (
         <div className="relative group w-full cursor-default">
             <div
                 ref={padRef}
-                className={`relative w-full rounded-[14px] overflow-hidden select-none border shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] transition-all duration-200 ${
-                    isDraggingState ? "border-cyan-500/40 ring-1 ring-cyan-500/20" : "border-zinc-800/50"
-                }`}
+                className={`relative w-full rounded-[14px] overflow-hidden select-none border shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] transition-all duration-200 ${isDraggingState ? "border-cyan-500/40 ring-1 ring-cyan-500/20" : "border-zinc-800/50"
+                    }`}
                 style={{ height: PAD_H }}
                 onPointerDown={(e) => {
                     dragging.current = true;
@@ -140,7 +139,7 @@ function ActiveDevicePreview({ tpl }: { tpl: ActiveDeviceTpl }) {
         const video = videoRef.current;
         if (!video) return;
 
-        let isMounted = true; 
+        let isMounted = true;
 
         if (isHovering) {
             const playVideo = async () => {
@@ -179,9 +178,8 @@ function ActiveDevicePreview({ tpl }: { tpl: ActiveDeviceTpl }) {
                     src={tpl.posterUrl}
                     alt={tpl.title}
                     draggable={false}
-                    className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
-                        isHovering ? "scale-105 opacity-0" : "scale-100 opacity-100"
-                    }`}
+                    className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${isHovering ? "scale-105 opacity-0" : "scale-100 opacity-100"
+                        }`}
                 />
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -198,15 +196,13 @@ function ActiveDevicePreview({ tpl }: { tpl: ActiveDeviceTpl }) {
                     playsInline
                     preload="metadata"
                     onLoadedData={() => setVideoReady(true)}
-                    className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
-                        isHovering && videoReady ? "scale-105 opacity-100" : "scale-100 opacity-0"
-                    }`}
+                    className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${isHovering && videoReady ? "scale-105 opacity-100" : "scale-100 opacity-0"
+                        }`}
                 />
             )}
             <div
-                className={`absolute inset-0 z-20 bg-black/20 transition-opacity duration-300 ${
-                    isHovering ? "opacity-100" : "opacity-0"
-                }`}
+                className={`absolute inset-0 z-20 bg-black/20 transition-opacity duration-300 ${isHovering ? "opacity-100" : "opacity-0"
+                    }`}
             />
             <div className=" flex items-center gap-2 absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/80 to-transparent z-30">
                 <Icon icon={tpl.icon} width={14} />
@@ -308,7 +304,7 @@ export function Mockup3dMenu({
         setImagePhoneRotY,
         setImagePhoneOpening,
         setImagePhoneShadow,
-        setImagePhoneShadowColor,
+        setImagePhoneShadowColor
     ]);
 
     return (
@@ -335,6 +331,7 @@ export function Mockup3dMenu({
                     </div>
 
                     <SliderControl
+                        icon="solar:scale-linear"
                         label={t("scale")}
                         value={Math.round(imagePhoneScale * 100)}
                         min={30}
