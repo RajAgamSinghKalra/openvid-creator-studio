@@ -26,7 +26,7 @@ const ENVIRONMENT_OPTIONS = [
     'apartment', 'studio', 'city', 'park', 'lobby',
 ] as const;
 
-interface Viewer3DControls {
+export interface Viewer3DControls {
     autoRotate: boolean;
     rotationSpeed: number;
     glow: number;
