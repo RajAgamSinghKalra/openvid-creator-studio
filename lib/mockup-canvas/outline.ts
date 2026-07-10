@@ -10,7 +10,7 @@ export function drawOutlineMockup(context: MockupCanvasContext): MockupDrawResul
   const frameColor = config.frameColor || (isDark ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.15)");
 
   const offset = 12;
-  const innerRadius = cornerRadius * 2.5;
+  const innerRadius = cornerRadius * 1.5;
   const outerRadius = innerRadius + offset;
 
   ctx.save();

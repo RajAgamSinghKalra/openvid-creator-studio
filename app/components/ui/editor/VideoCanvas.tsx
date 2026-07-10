@@ -1185,7 +1185,11 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                 vY = mr.contentY;
                 vW = mr.contentWidth;
                 vH = mr.contentHeight;
-                vR = (mockupId === "iphone-slim" || mockupId === "glass-curve" || mockupId === "glass-full") ? scaledRadius * 6 : scaledRadius;
+                vR = mockupId === "outline"
+                    ? scaledRadius * 1.6
+                    : (mockupId === "iphone-slim" || mockupId === "glass-curve" || mockupId === "glass-full")
+                        ? scaledRadius * 6
+                        : scaledRadius;
             }
 
             c.save();
