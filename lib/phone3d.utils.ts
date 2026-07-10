@@ -157,9 +157,6 @@ export function createCoverScreenCanvas(
   return canvas;
 }
 
-// All models (including the default phone) are now loaded as GLB files via URL.
-// The old loadGltfGroup() / GLTFLoader.parse() path is gone; everything goes
-// through loadGltfFromUrl() which caches by URL so each file is fetched once.
 const gltfUrlCache = new Map<string, Promise<THREE.Group>>();
 
 export function loadGltfFromUrl(url: string): Promise<THREE.Group> {
@@ -179,10 +176,6 @@ export function loadGltfFromUrl(url: string): Promise<THREE.Group> {
   return gltfUrlCache.get(url)!;
 }
 
-/**
- * Convenience alias kept for callers that previously used loadGltfGroup().
- * Now simply delegates to loadGltfFromUrl with the default phone GLB path.
- */
 export function loadGltfGroup(): Promise<THREE.Group> {
   return loadGltfFromUrl("/models/phone-gltf.glb");
 }
