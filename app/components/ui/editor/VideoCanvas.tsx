@@ -2110,7 +2110,7 @@ const VideoCanvasInner = forwardRef<VideoCanvasHandle, VideoCanvasProps>(functio
                                             setEditingTextId(null);
                                         }}
                                     />
-
+                               
                                     {/* ── 3D phone overlay (video & image mode) ── */}
                                     {imagePhoneActive && (
                                         <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 155, overflow: "visible" }}>

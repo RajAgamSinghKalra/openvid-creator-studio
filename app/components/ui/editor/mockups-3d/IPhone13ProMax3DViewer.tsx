@@ -477,7 +477,7 @@ function ModelScene({
       {showContactShadow && (
         <mesh
           position={[-0.00, -0.203, -0.156]}
-          rotation={[-Math.PI / 2, 0, 0]}
+          rotation={[-Math.PI / 2, 0, 0.1]}
           scale={[0.55, 0.55, 1.5]}
         >
           <planeGeometry args={[1, 1]} />
