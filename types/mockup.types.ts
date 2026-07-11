@@ -150,7 +150,7 @@ export const IMAGE_DEVICE_TEMPLATES = [
         accentColor: "#a3b8cc",
         icon: "ph:tablet-bold",
         modelUrl: "/models/ipad_mini_6_2021.glb",
-        posterUrl: encodeURI("/images/mockups-3d/macos-laptop.avif"),
-        videoUrl: encodeURI("/videos/mockups-3d/macos-laptop.mp4"),
+        posterUrl: encodeURI("/images/mockups-3d/ipad_mini_6_2021.avif"),
+        videoUrl: encodeURI("/videos/mockups-3d/ipad_mini_6_2021.mp4"),
     },
 ] as const;
