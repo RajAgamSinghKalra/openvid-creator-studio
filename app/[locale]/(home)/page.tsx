@@ -33,9 +33,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: 'Бесплатный онлайн-редактор видео с ИИ. Запись экрана, кинематические зумы, профессиональные макеты и экспорт в HD. Без водяного знака.',
       keywords: ['редактор видео', 'запись экрана', 'профессиональные демонстрации', 'зум видео', 'макеты', 'онлайн-редактор видео', 'бесплатный редактор видео'],
     },
+    ko: {
+      title: '몇 초 만에 전문적인 데모를 만들고 동영상을 편집하세요',
+      description: '무료 AI 기반 온라인 동영상 에디터. 화면을 녹화하고 시네마틱 줌, 전문 목업을 추가해 HD로 내보내세요. 워터마크 없음.',
+      keywords: ['동영상 에디터', '화면 녹화', '전문 데모', '동영상 줌', '목업', '온라인 동영상 에디터', '무료 동영상 에디터'],
+    },
   };
 
-  const { title, description, keywords } = metadata[locale as 'es' | 'en' | 'ru'] || metadata.es;
+  const { title, description, keywords } = metadata[locale as 'es' | 'en' | 'ru' | 'ko'] || metadata.es;
 
   return {
     title,
@@ -47,6 +52,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         es: `${baseUrl}/es`,
         en: `${baseUrl}/en`,
         ru: `${baseUrl}/ru`,
+        ko: `${baseUrl}/ko`,
       },
     },
     openGraph: {
@@ -76,7 +82,7 @@ export default async function Home({ params }: Props) {
 
   return (
     <>
-      <StructuredData data={generateWebAppSchema(locale as 'en' | 'es' | 'ru')} />
+      <StructuredData data={generateWebAppSchema(locale as 'en' | 'es' | 'ru' | 'ko')} />
       <StructuredData data={generateOrganizationSchema()} />
 
       <div className="flex flex-col">

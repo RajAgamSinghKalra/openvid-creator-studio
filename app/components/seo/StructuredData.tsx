@@ -62,7 +62,7 @@ export function StructuredData({ data }: StructuredDataProps) {
   );
 }
 
-export function generateWebAppSchema(locale: 'es' | 'en' | 'ru'): WebApplicationSchema {
+export function generateWebAppSchema(locale: 'es' | 'en' | 'ru' | 'ko'): WebApplicationSchema {
   const baseUrl = 'https://openvid.dev';
 
   const content = {
@@ -100,6 +100,18 @@ export function generateWebAppSchema(locale: 'es' | 'en' | 'ru'): WebApplication
         'Без водяных знаков',
         'Экспорт в высоком качестве',
         'Бесплатный онлайн-редактор',
+      ],
+    },
+    ko: {
+      name: 'openvid - 온라인 동영상 에디터',
+      description: '무료 AI 기반 온라인 동영상 에디터. 화면을 녹화하고 시네마틱 줌, 전문 목업을 추가해 워터마크 없이 HD로 내보내세요.',
+      features: [
+        'HD 화면 녹화',
+        'AI 기반 시네마틱 줌',
+        '전문 목업',
+        '워터마크 없음',
+        '고화질 내보내기',
+        '무료 온라인 에디터',
       ],
     },
   };
