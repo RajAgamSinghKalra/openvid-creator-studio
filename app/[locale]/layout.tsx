@@ -41,7 +41,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const ogLocaleMap: Record<string, string> = {
     en: 'en_US',
     es: 'es_ES',
-    ru: 'ru_RU'
+    ru: 'ru_RU',
+    ko: 'ko_KR'
   };
 
   const currentOgLocale = ogLocaleMap[locale] || 'en_US';
