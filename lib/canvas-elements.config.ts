@@ -48,6 +48,7 @@ export const PINNED_IMAGE_ITEMS = [
     { id: "overlay-08", name: "Overlay 8", imagePath: "/elements/images/overlays/overlay-08.webp" },
     { id: "overlay-09", name: "Overlay 9", imagePath: "/elements/images/overlays/overlay-09.webp" },
     { id: "overlay-14", name: "Overlay 14", imagePath: "/elements/images/overlays/overlay-14.webp" },
+    { id: "overlay-15", name: "Overlay 15", imagePath: "/elements/images/overlays/overlay-15.webp" },
     { id: "asset-05", name: "Asset 5", imagePath: "/elements/images/assets/asset-05.webp" },
     { id: "asset-06", name: "Asset 6", imagePath: "/elements/images/assets/asset-06.webp" },
     { id: "asset-07", name: "Asset 7", imagePath: "/elements/images/assets/asset-07.webp" },
@@ -67,7 +68,6 @@ export const PINNED_IMAGE_ITEMS = [
     { id: "sticker-71", name: "Sticker 71", imagePath: "/elements/images/stickers/sticker-71.webp" },
     { id: "sticker-72", name: "Sticker 72", imagePath: "/elements/images/stickers/sticker-72.webp" },
     { id: "sticker-73", name: "Sticker 73", imagePath: "/elements/images/stickers/sticker-73.webp" },
-    { id: "sticker-74", name: "Sticker 74", imagePath: "/elements/images/stickers/sticker-74.webp" },
 ];
 
 export const SVG_CATEGORIES: SvgCategory[] = [
@@ -118,7 +118,7 @@ export const IMAGE_CATEGORIES: ImageCategory[] = [
         id: "overlays",
         title: "Superposiciones",
         items: [
-            ...generateImageItems("overlays", "overlay", 14)
+            ...generateImageItems("overlays", "overlay", 15)
         ]
     },
     {

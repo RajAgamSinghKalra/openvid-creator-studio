@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, MouseEvent, useState, useCallback, memo, useMemo } from "react";
+import React, { useRef, MouseEvent, useState, useCallback, memo, useMemo, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import { useTranslations } from "next-intl";
 
@@ -369,20 +369,42 @@ CustomSocialCard.displayName = "CustomSocialCard";
 const InstagramReelCard = memo(({ data }: { data: SocialPost }) => {
   const t = useTranslations("socialReactions");
 
+  const [isVisible, setIsVisible] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+
   const handleRedirect = useCallback(() => {
     window.open(data.postUrl, "_blank", "noopener,noreferrer");
   }, [data.postUrl]);
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" }
+    );
+
+    if (cardRef.current) {
+      observer.observe(cardRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <article
+      ref={cardRef}
       className={`w-[calc(100vw-4rem)] sm:w-[calc(100vw-4rem)] max-w-132 shrink-0 relative overflow-hidden squircle-element-xl border border-white/15 bg-black text-white shadow-2xl transition duration-200 hover:border-white/30 flex flex-col justify-between select-none shadow-xl ${CARD_HEIGHT}`}
     >
-      <div className="absolute inset-0 h-full w-full pointer-events-none z-0">
+      <div className="absolute inset-0 h-full w-full pointer-events-none z-0 bg-neutral-900">
         <video
-          className="h-full w-full object-cover"
-          src={data.content.videoUrl}
+          className={`h-full w-full object-cover transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+          src={isVisible ? data.content.videoUrl : undefined}
           playsInline
-          preload="auto"
+          preload="none"
           autoPlay
           muted
           loop
@@ -411,12 +433,16 @@ const InstagramReelCard = memo(({ data }: { data: SocialPost }) => {
             <div className="text-[15px] font-semibold flex items-center gap-1">
               {data.author.name}
               {data.author.isVerified && (
-                <Icon icon="mdi:check-decagram" className="text-[#0095f6] h-[14px] w-[14px]" />
+                <Icon
+                  icon="mdi:check-decagram"
+                  className="text-[#0095f6] h-[14px] w-[14px]"
+                />
               )}
             </div>
             <div className="text-xs text-white/75">{data.author.followers}</div>
           </div>
         </div>
+
         <div
           onClick={handleRedirect}
           className="flex items-center justify-center p-2 rounded-full cursor-pointer hover:bg-white/10 transition"
