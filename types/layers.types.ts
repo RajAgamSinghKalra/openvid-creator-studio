@@ -14,7 +14,7 @@ export interface LayersPanelProps {
     onSelect: (id: string | null) => void;
     onMultiSelect?: (ids: string[]) => void;
     onDelete: (id: string | string[]) => void;
-    onReorder: (orderedIds: string[]) => void;
+    onReorder: (frontIds: string[], backIds: string[]) => void;
     onToggleVisible: (id: string, visible: boolean) => void;
     onToggleLock: (id: string, locked: boolean) => void;
     onBringToFront: (id: string) => void;

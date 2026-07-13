@@ -16,9 +16,12 @@ import {
   cloneGroup,
   type ImageMaskConfigLike,
   parseShadowColor,
+  applyTextureCover,
+  getOutlineFilter,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
+import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 
 THREE.Cache.enabled = true;
 
@@ -48,6 +51,8 @@ interface Props {
   rotationSpeed?: number;
   glow?: number;
   environment?: EnvironmentPreset;
+  isHovered: boolean;
+  isSelected: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -355,6 +360,7 @@ function ModelScene({
       }
       return;
     }
+
     const device = getDeviceFromModelUrl(modelUrl);
     const isDefaultPhone = device === "phone";
 
@@ -367,13 +373,44 @@ function ModelScene({
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
 
+    const updateTextureTransform = () => {
+      let TARGET_W = 2048;
+      let TARGET_H = 0;
+
+      if (isDefaultPhone) {
+        TARGET_W = PHONE_W * 4;
+        TARGET_H = Math.round(TARGET_W / screenAspectRef.current);
+      } else {
+        const deviceConfig = deviceConfigs[device];
+        TARGET_H = Math.round(TARGET_W / deviceConfig.aspectRatio);
+      }
+
+      applyTextureCover(
+        tex,
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        TARGET_W,
+        TARGET_H
+      );
+
+      applyVideoTextureIfReady();
+    };
+
+    if (videoElement.readyState >= 1) {
+      updateTextureTransform();
+    } else {
+      videoElement.addEventListener("loadedmetadata", updateTextureTransform);
+    }
+
     if (videoTextureRef.current) {
       videoTextureRef.current.dispose();
     }
     videoTextureRef.current = tex;
+
     applyVideoTextureIfReady();
 
     return () => {
+      videoElement.removeEventListener("loadedmetadata", updateTextureTransform);
       if (videoTextureRef.current === tex) {
         videoTextureRef.current = null;
       }
@@ -415,10 +452,9 @@ function ModelScene({
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const halfH = camZ * Math.tan((40 / 2) * DEG);
-        
-        // Se reduce ligeramente el factor (de 0.8 a 0.72) para dar mayor margen a la diagonal del teléfono al girar
+
         const sf = (halfH * 2 * 0.72) / size.y;
-        
+
         group.scale.setScalar(sf);
         group.position.copy(center).negate().multiplyScalar(sf);
 
@@ -530,11 +566,9 @@ function ModelScene({
     const id = setTimeout(() => {
       const orbit = orbitRef.current;
       if (!orbit) return;
-      
-      // Mantenemos la cámara siempre a una distancia física de 1.5 para evitar colisionar con el Near-Plane.
-      // El zoom es manejado de manera óptica (PerspectiveCamera zoom prop)
-      const radius = 1.5; 
-      
+
+      const radius = 1.5;
+
       const phi = Math.PI / 2 - initialRotationX * DEG;
       const theta = initialRotationY * DEG;
       orbit.object.position.setFromSphericalCoords(radius, phi, theta);
@@ -554,9 +588,8 @@ function ModelScene({
 
   return (
     <>
-      {/* Pasamos zoom={zoom} y bloqueamos pos Z en 1.5 en lugar de (1.5 / zoom) para no golpear el recorte Near de la cámara */}
       <PerspectiveCamera ref={cameraRef} makeDefault fov={40} near={0.01} far={100} position={[0, 0, 1.5]} zoom={zoom} />
-      
+
       <OrbitControls
         ref={orbitRef}
         enableZoom={false}
@@ -578,7 +611,7 @@ function ModelScene({
       <directionalLight position={[3, 6, 5]} intensity={0.6} />
       <directionalLight position={[-4, -2, 3]} intensity={0.25} color="#c8d8ff" />
       <directionalLight position={[0, -5, 5]} intensity={0.35} />
-      
+
       <group ref={rootRef} rotation={[0, 0, initialRotationZ * DEG]}>
         {modelGroup && <primitive object={modelGroup} />}
       </group>
@@ -634,7 +667,7 @@ function CanvasWithLoader(
 }
 
 export function Phone3DViewer(props: Props) {
-  const { shadowIntensity = 0, shadowColor = "#000000" } = props;
+  const { shadowIntensity = 0, shadowColor = "#000000", imageMaskConfig = null, isHovered = false, isSelected = false } = props;
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [grabbing, setGrabbing] = useState(false);
@@ -646,6 +679,14 @@ export function Phone3DViewer(props: Props) {
   const computedOpacity = tEased * 0.7;
   const shadowRgba = shadowColor.startsWith("#") ? parseShadowColor(shadowColor, computedOpacity) : shadowColor;
   const hasShadow = t > 0.01;
+
+  const maskStyle = GetMediaMaskStyles(imageMaskConfig, {
+    inset: 300,
+    deviceWidth: PHONE_W,
+    deviceHeight: PHONE_H,
+  });
+
+  const outlineFilter = getOutlineFilter(isSelected, isHovered);
 
   return (
     <>
@@ -678,7 +719,6 @@ export function Phone3DViewer(props: Props) {
             />
           )}
 
-          {/* El canvas ahora fuerza una proporción cuadradra 1:1 de un tamaño generoso para evitar recortes del Frustum Horizontal */}
           <div
             style={{
               position: "absolute",
@@ -690,11 +730,10 @@ export function Phone3DViewer(props: Props) {
               zIndex: 2,
               overflow: "visible",
               cursor: grabbing ? "grabbing" : "grab",
-              filter: hasShadow
-                ? `drop-shadow(0px ${(tEased * 22).toFixed(1)}px ${(tEased * 32).toFixed(1)}px ${shadowRgba})`
-                : "none",
+              filter: outlineFilter,
               transition: "filter 0.15s ease",
               pointerEvents: "auto",
+              ...maskStyle
             }}
             onPointerDown={() => setGrabbing(true)}
             onPointerUp={() => setGrabbing(false)}

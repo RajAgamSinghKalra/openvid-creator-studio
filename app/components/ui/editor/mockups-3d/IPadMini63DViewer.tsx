@@ -8,9 +8,12 @@ import {
   applyCropToImage,
   type ImageMaskConfigLike,
   parseShadowColor,
+  applyTextureCover,
+  getOutlineFilter,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
+import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 
 export interface IPadMini63DApi {
   renderAt: (width: number, height: number) => void;
@@ -36,6 +39,8 @@ interface Props {
   rotationSpeed?: number;
   glow?: number;
   environment?: EnvironmentPreset;
+  isSelected?: boolean;
+  isHovered?: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -154,7 +159,7 @@ function ModelScene({
       if (!currentMat) return;
 
       const sourceImg = cropArea ? applyCropToImage(img, cropArea) : img;
-      const cover = createCoverScreenCanvas(sourceImg, TARGET_W, TARGET_H, 0, imageMaskConfig);
+      const cover = createCoverScreenCanvas(sourceImg, TARGET_W, TARGET_H, 0, null);
 
       if (currentMat.map) {
         currentMat.map.dispose();
@@ -215,22 +220,46 @@ function ModelScene({
       }
       return;
     }
+
     const tex = new THREE.VideoTexture(videoElement);
+
     tex.flipY = false;
     tex.center.set(0.5, 0.5);
     tex.rotation = Math.PI;
+
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
+
+    const updateTextureTransform = () => {
+      applyTextureCover(
+        tex,
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        TARGET_W,
+        TARGET_H
+      );
+      applyVideoTextureIfReady();
+    };
+
+    if (videoElement.readyState >= 1) {
+      updateTextureTransform();
+    } else {
+      videoElement.addEventListener("loadedmetadata", updateTextureTransform);
+    }
+
     if (videoTextureRef.current) {
       videoTextureRef.current.dispose();
     }
     videoTextureRef.current = tex;
+
     applyVideoTextureIfReady();
+
     return () => {
+      videoElement.removeEventListener("loadedmetadata", updateTextureTransform);
       if (videoTextureRef.current === tex) {
         videoTextureRef.current = null;
       }
@@ -446,7 +475,8 @@ function CanvasWithLoader(
 }
 
 export function IPadMini63DViewer(props: Props) {
-  const { shadowIntensity = 0, shadowColor = "#000000" } = props;
+  const { shadowIntensity = 0, shadowColor = "#000000", imageMaskConfig = null, isSelected = false,
+    isHovered = false } = props;
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [grabbing, setGrabbing] = useState(false);
@@ -460,6 +490,14 @@ export function IPadMini63DViewer(props: Props) {
 
   const VIEWER_W = 750;
   const VIEWER_H = 1000;
+
+  const maskStyle = GetMediaMaskStyles(imageMaskConfig, {
+    inset: 300,
+    deviceWidth: VIEWER_W,
+    deviceHeight: VIEWER_H,
+  });
+
+  const outlineFilter = getOutlineFilter(isSelected, isHovered);
 
   return (
     <>
@@ -498,11 +536,10 @@ export function IPadMini63DViewer(props: Props) {
               zIndex: 2,
               overflow: "visible",
               cursor: grabbing ? "grabbing" : "grab",
-              filter: hasShadow
-                ? `drop-shadow(0px ${(tEased * 22).toFixed(1)}px ${(tEased * 32).toFixed(1)}px ${shadowRgba})`
-                : "none",
+              filter: outlineFilter,
               transition: "filter 0.15s ease",
               pointerEvents: "auto",
+              ...maskStyle
             }}
             onPointerDown={() => setGrabbing(true)}
             onPointerUp={() => setGrabbing(false)}

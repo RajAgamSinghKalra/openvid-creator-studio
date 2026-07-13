@@ -21,7 +21,7 @@ export function ControlsPopup() {
             style={{
                 position: "fixed",
                 bottom: "220px",
-                right: "290px",
+                right: "275px",
                 width: "320px",
                 zIndex: 10,
             }}

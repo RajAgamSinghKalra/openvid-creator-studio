@@ -3,14 +3,17 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { PerspectiveCamera, useGLTF, Environment, OrbitControls } from "@react-three/drei";
 import { useEffect, useRef, useState, Suspense, useLayoutEffect, useMemo } from "react";
 import * as THREE from "three";
-import { createCoverScreenCanvas, applyCropToImage, type ImageMaskConfigLike } from "@/lib/phone3d.utils";
+import { createCoverScreenCanvas, applyCropToImage, type ImageMaskConfigLike, applyTextureCover, getOutlineFilter } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
+import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 
 export interface IPhone13ProMax3DApi {
   renderAt: (width: number, height: number) => void;
   restorePreview: () => void;
   hasBuiltInShadow: boolean;
+  getVisualSize: () => { width: number; height: number } | null;
+
 }
 
 interface Props {
@@ -32,6 +35,8 @@ interface Props {
   rotationSpeed?: number;
   glow?: number;
   environment?: EnvironmentPreset;
+  isSelected?: boolean;
+  isHovered?: boolean;
 }
 
 const TEX_W = 1284 * 2;
@@ -156,6 +161,10 @@ function ModelScene({
     onApiRef.current = onApi;
   });
 
+  useLayoutEffect(() => {
+    onApiRef.current = onApi;
+  });
+
   useFrame(() => {
     if (videoElement && videoTextureRef.current) {
       videoTextureRef.current.needsUpdate = true;
@@ -163,6 +172,7 @@ function ModelScene({
   });
 
   useEffect(() => {
+
     const capturedOnApi = onApiRef.current;
     const RENDER_PIXEL_RATIO = 2;
     const api: IPhone13ProMax3DApi = {
@@ -190,6 +200,16 @@ function ModelScene({
         gl.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
         gl.setSize(freshW, freshH, false);
       },
+
+      //Se agrego esto
+      getVisualSize: () => {
+        const canvas = gl.domElement;
+        const domW = canvas.clientWidth;
+        const domH = canvas.clientHeight;
+        if (!domW || !domH) return null;
+        return { width: domW, height: domH };
+      },
+
       hasBuiltInShadow: true,
     };
     capturedOnApi?.(api);
@@ -214,6 +234,7 @@ function ModelScene({
       }
       return;
     }
+
     const tex = new THREE.VideoTexture(videoElement);
     tex.flipY = true;
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -222,10 +243,28 @@ function ModelScene({
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
+
+    const updateTextureTransform = () => {
+      applyTextureCover(
+        tex,
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        TEX_W,
+        TEX_H
+      );
+    };
+
+    if (videoElement.readyState >= 1) {
+      updateTextureTransform();
+    } else {
+      videoElement.addEventListener("loadedmetadata", updateTextureTransform);
+    }
+
     if (videoTextureRef.current) {
       videoTextureRef.current.dispose();
     }
     videoTextureRef.current = tex;
+
     const applyVideoTex = () => {
       const mat = wallpaperMatRef.current;
       if (!mat) return;
@@ -236,8 +275,11 @@ function ModelScene({
       mat.color.set(0xffffff);
       mat.needsUpdate = true;
     };
+
     applyVideoTex();
+
     return () => {
+      videoElement.removeEventListener("loadedmetadata", updateTextureTransform);
       if (videoTextureRef.current === tex) {
         videoTextureRef.current = null;
       }
@@ -257,7 +299,8 @@ function ModelScene({
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
-        const cover = createCoverScreenCanvas(img, TEX_W, TEX_H, 0, null);
+        const sourceImage = cropArea ? applyCropToImage(img, cropArea) : img;
+        const cover = createCoverScreenCanvas(sourceImage, TEX_W, TEX_H, 0, null);
         if (mat.map) {
           mat.map.dispose();
           mat.map = null;
@@ -646,7 +689,9 @@ export function IPhone13ProMax3DViewer({
   autoRotate,
   rotationSpeed,
   glow,
-  environment
+  environment,
+  isSelected = false,
+  isHovered = false,
 }: Props) {
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -655,6 +700,13 @@ export function IPhone13ProMax3DViewer({
   const tEased = t * t;
   const computedBlur = tEased * 60;
   const hasShadow = t > 0.01;
+  const maskStyle = GetMediaMaskStyles(imageMaskConfig, {
+    inset: 400,
+    deviceWidth: 480,
+    deviceHeight: 1000,
+  });
+
+  const outlineFilter = getOutlineFilter(isSelected, isHovered);
 
   return (
     <>
@@ -676,9 +728,10 @@ export function IPhone13ProMax3DViewer({
               zIndex: 2,
               overflow: "visible",
               cursor: grabbing ? "grabbing" : "grab",
-              filter: "none",
+              filter: outlineFilter,
               transition: "filter 0.15s ease",
               pointerEvents: "auto",
+              ...maskStyle,
             }}
             onPointerDown={() => setGrabbing(true)}
             onPointerUp={() => setGrabbing(false)}

@@ -4,9 +4,10 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { PerspectiveCamera, useGLTF, Environment, OrbitControls, ContactShadows } from "@react-three/drei";
 import { useEffect, useRef, useState, Suspense, useLayoutEffect, useMemo, useCallback } from "react";
 import * as THREE from "three";
-import { createCoverScreenCanvas, applyCropToImage, parseShadowColor, type ImageMaskConfigLike } from "@/lib/phone3d.utils";
+import { createCoverScreenCanvas, applyCropToImage, parseShadowColor, type ImageMaskConfigLike, applyTextureCover, getOutlineFilter } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
+import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 
 export interface IPhone17ProMax3DApi {
     renderAt: (width: number, height: number) => void;
@@ -33,6 +34,8 @@ interface Props {
     rotationSpeed?: number;
     glow?: number;
     environment?: EnvironmentPreset;
+    isSelected?: boolean;
+    isHovered?: boolean;
 }
 
 const TEX_W = 1284 * 2;
@@ -177,14 +180,32 @@ function ModelScene({
             }
             return;
         }
+
         const tex = new THREE.VideoTexture(videoElement);
-
         tex.flipY = false;
-
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.generateMipmaps = true;
         tex.minFilter = THREE.LinearMipmapLinearFilter;
         tex.magFilter = THREE.LinearFilter;
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+
+        const updateTextureTransform = () => {
+            applyTextureCover(
+                tex,
+                videoElement.videoWidth,
+                videoElement.videoHeight,
+                TEX_W,
+                TEX_H
+            );
+            invalidate();
+        };
+
+        if (videoElement.readyState >= 1) {
+            updateTextureTransform();
+        } else {
+            videoElement.addEventListener('loadedmetadata', updateTextureTransform);
+        }
 
         if (videoTextureRef.current) {
             videoTextureRef.current.dispose();
@@ -194,19 +215,23 @@ function ModelScene({
         const applyVideoTex = () => {
             const mat = wallpaperMatRef.current;
             if (!mat) return;
+
             if (mat.map && mat.map !== tex) {
                 mat.map.dispose();
             }
+
             mat.map = tex;
             mat.color.set(0xffffff);
             mat.needsUpdate = true;
             if (mat.map) mat.map.needsUpdate = true;
+
             invalidate();
         };
 
         applyVideoTex();
 
         return () => {
+            videoElement.removeEventListener('loadedmetadata', updateTextureTransform);
             if (videoTextureRef.current === tex) {
                 videoTextureRef.current = null;
             }
@@ -475,6 +500,8 @@ export function IPhone17ProMax3DViewer({
     rotationSpeed,
     glow,
     environment,
+    isSelected = false,
+    isHovered = false,
 }: Props) {
     const rootRef = useRef<THREE.Group | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -487,6 +514,14 @@ export function IPhone17ProMax3DViewer({
     const shadowRgba = shadowColor.startsWith("#") ? parseShadowColor(shadowColor, computedOpacity) : shadowColor;
     const hasShadow = t > 0.01;
 
+    const maskStyle = GetMediaMaskStyles(imageMaskConfig, {
+        inset: 400,
+        deviceWidth: 480,
+        deviceHeight: 1000,
+    });
+
+    const outlineFilter = getOutlineFilter(isSelected, isHovered);
+
     return (
         <>
             <div style={{ display: "inline-block", transformOrigin: "top center", width: 480, height: 1000 + (hasShadow ? computedBlur * 0.8 : 0), marginTop: "100px", marginLeft: "170px" }}>
@@ -494,7 +529,22 @@ export function IPhone17ProMax3DViewer({
                     {hasShadow && (
                         <div aria-hidden style={{ position: "absolute", bottom: -(computedBlur * 0.5), left: `${20 + tEased * 5}%`, width: `${60 - tEased * 10}%`, height: Math.max(4, computedBlur * 0.55), borderRadius: "50%", background: shadowRgba, filter: `blur(${Math.max(2, computedBlur * 0.6)}px)`, zIndex: 0, pointerEvents: "none" }} />
                     )}
-                    <div style={{ position: "absolute", inset: "-400px", zIndex: 2, overflow: "visible", cursor: grabbing ? "grabbing" : "grab", filter: hasShadow ? `drop-shadow(0px ${(tEased * 22).toFixed(1)}px ${(tEased * 32).toFixed(1)}px ${shadowRgba})` : "none", transition: "filter 0.15s ease", pointerEvents: "auto" }} onPointerDown={() => setGrabbing(true)} onPointerUp={() => setGrabbing(false)} onPointerLeave={() => setGrabbing(false)} >
+                    <div
+                        style={{
+                            position: "absolute",
+                            inset: "-400px",
+                            zIndex: 2,
+                            overflow: "visible",
+                            cursor: grabbing ? "grabbing" : "grab",
+                            filter: outlineFilter,
+                            transition: "filter 0.15s ease",
+                            pointerEvents: "auto",
+                            ...maskStyle,
+                        }}
+                        onPointerDown={() => setGrabbing(true)}
+                        onPointerUp={() => setGrabbing(false)}
+                        onPointerLeave={() => setGrabbing(false)}
+                    >
                         <CanvasWithLoader
                             imageUrl={imageUrl}
                             imageMaskConfig={imageMaskConfig}
