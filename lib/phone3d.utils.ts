@@ -38,6 +38,16 @@ export const DEVICE_3D_DIMENSIONS: Record<string, { width: number; height: numbe
   'ipad_mini_6_2021': { width: 1040, height: 1500 },
 };
 
+export const PHONE_DEVICE_URLS: Record<string, string | undefined> = {
+    phone: '/models/phone-gltf.glb',
+    iphone: '/models/iphone-15-pro-max.glb',
+    'iphone-13-pro-max': '/models/apple_iphone_13_pro_max.glb',
+    'double_iphone_13_pro': '/models/double_iphone_13_pro.glb',
+    'iphone-17-pro-max': '/models/iphone-17-pro-max.glb',
+    'ipad_mini_6_2021': '/models/ipad_mini_6_2021.glb',
+    laptop: '/models/mac-book.glb',
+};
+
 export const CAM_FOV = 20;
 export const CAM_Z = 6;
 
