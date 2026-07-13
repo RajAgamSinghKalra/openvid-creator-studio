@@ -8,10 +8,9 @@ export function buildLayerNames(elements: CanvasElement[]): Map<string, string> 
             typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
         }
     }
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
     const typeIndexes = new Map<string, number>();
     const names = new Map<string, string>();
-    for (const el of sorted) {
+    for (const el of elements) {
         if (el.type === "text") {
             names.set(el.id, (el as TextElement).content?.slice(0, 24) || "Texto");
         } else if (el.type === "image") {
@@ -31,10 +30,9 @@ export function buildLayerNames(elements: CanvasElement[]): Map<string, string> 
 }
 
 export function buildGroupNumbers(elements: CanvasElement[]): Map<string, number> {
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
     const map = new Map<string, number>();
     let n = 0;
-    for (const el of sorted) {
+    for (const el of elements) {
         if (el.groupId && !map.has(el.groupId)) map.set(el.groupId, ++n);
     }
     return map;

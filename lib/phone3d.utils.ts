@@ -82,15 +82,15 @@ export function getDeviceFromModelUrl(modelUrl: string | undefined): DeviceKey {
   if (modelUrl.includes("iphone")) return "iphone";
   return "phone";
 }
-
 export function createCoverScreenCanvas(
   source: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement,
   targetW: number,
   targetH: number,
   cornerRadius: number,
   maskConfig?: ImageMaskConfigLike | null
-): HTMLCanvasElement {
+): HTMLCanvasElement | OffscreenCanvas {
   let srcW: number, srcH: number;
+  
   if (source instanceof HTMLImageElement) {
     srcW = source.naturalWidth || source.width || 1;
     srcH = source.naturalHeight || source.height || 1;
@@ -108,14 +108,14 @@ export function createCoverScreenCanvas(
   const offsetX = (targetW - drawW) / 2;
   const offsetY = (targetH - drawH) / 2;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = targetW;
-  canvas.height = targetH;
-  const ctx = canvas.getContext("2d")!;
+  const canvas = createOptimalCanvas(targetW, targetH);
+  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
   const r = Math.min(cornerRadius, Math.min(targetW, targetH) / 2);
+
   ctx.beginPath();
   ctx.moveTo(r, 0);
   ctx.lineTo(targetW - r, 0);
@@ -128,7 +128,7 @@ export function createCoverScreenCanvas(
   ctx.quadraticCurveTo(0, 0, r, 0);
   ctx.closePath();
   ctx.clip();
-
+  
   ctx.drawImage(source, offsetX, offsetY, drawW, drawH);
 
   if (maskConfig?.enabled) {
@@ -139,23 +139,25 @@ export function createCoverScreenCanvas(
       const diag = Math.sqrt(targetW * targetW + targetH * targetH);
       const dx = Math.sin(a) * diag;
       const dy = -Math.cos(a) * diag;
+      
       const g = ctx.createLinearGradient(cx - dx / 2, cy - dy / 2, cx + dx / 2, cy + dy / 2);
       g.addColorStop(0, "rgba(0,0,0,1)");
       g.addColorStop(Math.max(0, Math.min(1, from / 100)), "rgba(0,0,0,1)");
       g.addColorStop(Math.max(0, Math.min(1, (to ?? 100) / 100)), "rgba(0,0,0,0)");
+      
       ctx.globalCompositeOperation = "destination-out";
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, targetW, targetH);
       ctx.globalCompositeOperation = "source-over";
     };
+
     if (maskConfig.top) drawGradient(180, maskConfig.top.from, maskConfig.top.to ?? 100);
     if (maskConfig.bottom) drawGradient(0, maskConfig.bottom.from, maskConfig.bottom.to ?? 100);
     if (maskConfig.left) drawGradient(90, maskConfig.left.from, maskConfig.left.to ?? 100);
     if (maskConfig.right) drawGradient(270, maskConfig.right.from, maskConfig.right.to ?? 100);
-    if (maskConfig.angle !== undefined) {
-      drawGradient(maskConfig.angle, maskConfig.angleFrom ?? 0, maskConfig.angleTo ?? 100);
-    }
+    if (maskConfig.angle !== undefined) drawGradient(maskConfig.angle, maskConfig.angleFrom ?? 0, maskConfig.angleTo ?? 100);
   }
+
   return canvas;
 }
 
@@ -259,15 +261,48 @@ export function applyCropToImage(
   return canvas;
 }
 
-export function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+export function applyTextureCover(
+  texture: THREE.Texture,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number
+) {
+  if (sourceWidth === 0 || sourceHeight === 0) return;
+  
+  const videoAspect = sourceWidth / sourceHeight;
+  const screenAspect = targetWidth / targetHeight;
+
+  if (videoAspect > screenAspect) {
+    texture.repeat.set(screenAspect / videoAspect, 1);
+    texture.offset.set((1 - texture.repeat.x) / 2, 0);
+  } else {
+    texture.repeat.set(1, videoAspect / screenAspect);
+    texture.offset.set(0, (1 - texture.repeat.y) / 2);
+  }
+  texture.needsUpdate = true;
 }
 
-export interface CameraFlyAnimation {
-  fromPos: THREE.Vector3;
-  toPos: THREE.Vector3;
-  fromTarget: THREE.Vector3;
-  toTarget: THREE.Vector3;
-  startTime: number;
-  duration: number;
+function createOptimalCanvas(width: number, height: number) {
+  if (typeof OffscreenCanvas !== "undefined") {
+    return new OffscreenCanvas(width, height);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+export function getOutlineFilter(isSelected: boolean = false, isHovered: boolean = false): string {
+  const showOutline = isSelected || isHovered;
+  
+  if (!showOutline) return "none";
+
+  const outlineColor = isSelected ? "#3b82f6" : "#ffffff";
+
+  if (isSelected) {
+    return `drop-shadow(1.5px 0 0.1px ${outlineColor}) drop-shadow(-1.5px 0 0.1px ${outlineColor}) drop-shadow(0 1.5px 0.1px ${outlineColor}) drop-shadow(0 -1.5px 0.1px ${outlineColor})`;
+  } else {
+    return `drop-shadow(0.75px 0 0px ${outlineColor}) drop-shadow(-0.75px 0 0px ${outlineColor}) drop-shadow(0 0.75px 0px ${outlineColor}) drop-shadow(0 -0.75px 0px ${outlineColor})`;
+  }
 }
