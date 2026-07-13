@@ -10,9 +10,12 @@ import {
   applyCropToImage,
   parseShadowColor,
   type ImageMaskConfigLike,
+  applyTextureCover,
+  getOutlineFilter,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
+import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 
 THREE.Cache.enabled = true;
 
@@ -57,6 +60,8 @@ interface Props {
   rotationSpeed?: number;
   glow?: number;
   environment?: EnvironmentPreset;
+  isHovered: boolean;
+  isSelected: boolean;
 }
 
 let gltfCachePromise: Promise<THREE.Group> | null = null;
@@ -234,7 +239,7 @@ function ModelScene({
       const TEX_W = RENDER_W;
       const TEX_H = RENDER_H;
       const cropped = applyCropToImage(img, cropArea);
-      const cover = createCoverScreenCanvas(cropped, TEX_W, TEX_H, 0, imageMaskConfig);
+      const cover = createCoverScreenCanvas(cropped, TEX_W, TEX_H, 0, null);
 
       if (currentMat.map) {
         currentMat.map.dispose();
@@ -301,6 +306,23 @@ function ModelScene({
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
 
+    const updateTextureTransform = () => {
+      applyTextureCover(
+        tex,
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        screenSize[0] * 100,
+        screenSize[1] * 100
+      );
+      applyVideoTextureIfReady();
+    };
+
+    if (videoElement.readyState >= 1) {
+      updateTextureTransform();
+    } else {
+      videoElement.addEventListener("loadedmetadata", updateTextureTransform);
+    }
+
     if (videoTextureRef.current) {
       videoTextureRef.current.dispose();
     }
@@ -309,6 +331,7 @@ function ModelScene({
     applyVideoTextureIfReady();
 
     return () => {
+      videoElement.removeEventListener("loadedmetadata", updateTextureTransform);
       if (videoTextureRef.current === tex) {
         videoTextureRef.current = null;
       }
@@ -556,7 +579,7 @@ function CanvasWithLoader(
 }
 
 export function Laptop3DViewer(props: Props) {
-  const { shadowIntensity = 0, shadowColor = "#000000" } = props;
+  const { shadowIntensity = 0, shadowColor = "#000000", imageMaskConfig = null, isHovered = false, isSelected = false } = props;
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [grabbing, setGrabbing] = useState(false);
@@ -567,6 +590,15 @@ export function Laptop3DViewer(props: Props) {
   const computedOpacity = tEased * 0.7;
   const shadowRgba = shadowColor.startsWith("#") ? parseShadowColor(shadowColor, computedOpacity) : shadowColor;
   const hasShadow = t > 0.01;
+
+  const maskStyle = GetMediaMaskStyles(imageMaskConfig, {
+    insetX: 0,
+    insetY: 0,
+    deviceWidth: LAPTOP_W,
+    deviceHeight: LAPTOP_H,
+  });
+
+  const outlineFilter = getOutlineFilter(isSelected, isHovered);
 
   return (
     <>
@@ -615,10 +647,9 @@ export function Laptop3DViewer(props: Props) {
               overflow: "visible",
               zIndex: 2,
               cursor: grabbing ? "grabbing" : "grab",
-              filter: hasShadow
-                ? `drop-shadow(0px ${(tEased * 22).toFixed(1)}px ${(tEased * 32).toFixed(1)}px ${shadowRgba})`
-                : "none",
+              filter: outlineFilter,
               transition: "filter 0.15s ease",
+              ...maskStyle,
             }}
             onPointerDown={() => setGrabbing(true)}
             onPointerUp={() => setGrabbing(false)}

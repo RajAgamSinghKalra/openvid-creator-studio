@@ -11,9 +11,12 @@ import {
   applyCropToImage,
   type ImageMaskConfigLike,
   parseShadowColor,
+  applyTextureCover,
+  getOutlineFilter,
 } from "@/lib/phone3d.utils";
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import { EnvironmentPreset, HDRI_FILES } from "@/lib/viewer-controls3d";
+import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 
 export interface DoubleIPhone3DApi {
   renderAt: (width: number, height: number) => void;
@@ -39,6 +42,8 @@ interface Props {
   rotationSpeed?: number;
   glow?: number;
   environment?: EnvironmentPreset;
+  isSelected?: boolean;
+  isHovered?: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -165,7 +170,7 @@ function ModelScene({
       const TARGET_W = 1080;
       const TARGET_H = 2340;
       const sourceImg = cropArea ? applyCropToImage(img, cropArea) : img;
-      const cover = createCoverScreenCanvas(sourceImg, TARGET_W, TARGET_H, 0, imageMaskConfig);
+      const cover = createCoverScreenCanvas(sourceImg, TARGET_W, TARGET_H, 0, null);
 
       if (currentMat.map) {
         currentMat.map.dispose();
@@ -202,14 +207,10 @@ function ModelScene({
   const applyVideoTextureIfReady = useCallback(() => {
     const mat = screenMatRef.current;
     const tex = videoTextureRef.current;
-
     if (mat && tex) {
       if (mat.map && mat.map !== tex) {
         mat.map.dispose();
       }
-      tex.flipY = false;
-      tex.needsUpdate = true;
-
       mat.map = tex;
       mat.color.set(0xffffff);
       mat.needsUpdate = true;
@@ -227,13 +228,32 @@ function ModelScene({
     }
 
     const tex = new THREE.VideoTexture(videoElement);
+
     tex.flipY = true;
+
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
+
+    const updateTextureTransform = () => {
+      applyTextureCover(
+        tex,
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        1080,
+        2340
+      );
+      applyVideoTextureIfReady();
+    };
+
+    if (videoElement.readyState >= 1) {
+      updateTextureTransform();
+    } else {
+      videoElement.addEventListener("loadedmetadata", updateTextureTransform);
+    }
 
     if (videoTextureRef.current) {
       videoTextureRef.current.dispose();
@@ -243,6 +263,7 @@ function ModelScene({
     applyVideoTextureIfReady();
 
     return () => {
+      videoElement.removeEventListener("loadedmetadata", updateTextureTransform);
       if (videoTextureRef.current === tex) {
         videoTextureRef.current = null;
       }
@@ -440,7 +461,7 @@ function CanvasWithLoader(
 }
 
 export function DoubleIPhone3DViewer(props: Props) {
-  const { shadowIntensity = 0, shadowColor = "#000000" } = props;
+  const { shadowIntensity = 0, shadowColor = "#000000", imageMaskConfig = null, isSelected = false, isHovered = false } = props;
   const rootRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [grabbing, setGrabbing] = useState(false);
@@ -453,6 +474,14 @@ export function DoubleIPhone3DViewer(props: Props) {
     ? parseShadowColor(shadowColor, computedOpacity)
     : shadowColor;
   const hasShadow = t > 0.01;
+
+  const maskStyle = GetMediaMaskStyles(imageMaskConfig, {
+    inset: 400,
+    deviceWidth: PHONE_W,
+    deviceHeight: PHONE_H,
+  });
+
+  const outlineFilter = getOutlineFilter(isSelected, isHovered);
 
   return (
     <>
@@ -491,11 +520,10 @@ export function DoubleIPhone3DViewer(props: Props) {
               zIndex: 2,
               overflow: "visible",
               cursor: grabbing ? "grabbing" : "grab",
-              filter: hasShadow
-                ? `drop-shadow(0px ${(tEased * 22).toFixed(1)}px ${(tEased * 32).toFixed(1)}px ${shadowRgba})`
-                : "none",
+              filter: outlineFilter,
               transition: "filter 0.15s ease",
               pointerEvents: "auto",
+              ...maskStyle,
             }}
             onPointerDown={() => setGrabbing(true)}
             onPointerUp={() => setGrabbing(false)}
