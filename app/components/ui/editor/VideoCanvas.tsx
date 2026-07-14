@@ -7,7 +7,7 @@ import type { ImageElement, SvgElement } from "@/types/canvas-elements.types";
 import { getCameraLayout } from "@/types/camera.types";
 import { ASPECT_RATIO_DIMENSIONS } from "@/types";
 import { getWallpaperUrl } from "@/lib/wallpaper.utils";
-import { drawRoundedRect, drawRoundedRectBottomOnly, calculateScaledPadding, applyCanvasBackground, getAspectRatioStyle, getAspectRatioNumber, Corner, getCornerStyle, getNearestCorner } from "@/lib/canvas.utils";
+import { drawRoundedRect, drawRoundedRectBottomOnly, calculateScaledPadding, applyCanvasBackground, getAspectRatioStyle, getAspectRatioNumber, Corner, getCornerStyle, getNearestCorner, snapRotation, normalizeAngle } from "@/lib/canvas.utils";
 import { drawMockupToCanvas } from "@/lib/mockup-canvas.utils";
 import { speedToTransitionMs, ZOOM_EASING, calculateZoomPhaseState, zoomLevelToFactor } from "@/types/zoom.types";
 import type { ZoomFragment } from "@/types/zoom.types";
@@ -31,6 +31,7 @@ import { CanvasContextMenu } from "@/components/ui/CanvasContextMenu";
 import { Viewer3DControlsBridge } from "@/components/ui/Viewer3DControlsBridge";
 import { applyGradientMaskToRegion, GetMediaMaskStyles } from "@/lib/media-mask.utils";
 import { MediaContent } from "@/components/ui/MediaContent";
+import { RotationGuideLine } from "@/components/ui/RotationGuideLine";
 
 export type { VideoCanvasHandle, VideoCanvasProps };
 
@@ -250,6 +251,11 @@ function VideoCanvasInner({
     const [isVideoHovered, setIsVideoHovered] = useState(false);
     const [isVideoSelected, setIsVideoSelected] = useState(false);
 
+    // Intrinsic aspect ratio of the actual media (video/image), used to size
+    // the "none" mockup container to the real letterboxed contain-box instead
+    // of the full available area.
+    const [mediaAspect, setMediaAspect] = useState<number | null>(null);
+
     // Image zoom state (for photo mode)
     const [imageZoomScale, setImageZoomScale] = useState(1);
 
@@ -291,6 +297,7 @@ function VideoCanvasInner({
     }, [videoUrl, videoRef, mockupId]);
 
     // Preserve video state when mockup changes (detect unmount via cleanup)
+    // Preserve video state when mockup changes (detect unmount via cleanup)
     useEffect(() => {
         return () => {
             if (videoRef.current && videoUrl) {
@@ -302,6 +309,39 @@ function VideoCanvasInner({
         };
     }, [mockupId, videoUrl, videoRef]);
 
+    // Track the real intrinsic aspect ratio of the video so the "none"
+    // mockup container can match the actual letterboxed contain-box.
+    useEffect(() => {
+        if (mediaType !== "video") return;
+        const video = videoRef.current;
+        if (!video) return;
+        const updateAspect = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setMediaAspect(video.videoWidth / video.videoHeight);
+            }
+        };
+        updateAspect();
+        video.addEventListener("loadedmetadata", updateAspect);
+        return () => video.removeEventListener("loadedmetadata", updateAspect);
+    }, [mediaType, videoRef, videoUrl]);
+
+    // Same, for image mode.
+    useEffect(() => {
+        if (mediaType !== "image") return;
+        const img = imageRef?.current;
+        if (!img) return;
+        const updateAspect = () => {
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                setMediaAspect(img.naturalWidth / img.naturalHeight);
+            }
+        };
+        updateAspect();
+        img.addEventListener("load", updateAspect);
+        return () => img.removeEventListener("load", updateAspect);
+    }, [mediaType, imageRef, imageUrl]);
+
+    // Dispose Three.js WebGL resources when component unmounts
+
     // Dispose Three.js WebGL resources when component unmounts
     useEffect(() => {
         return () => {
@@ -312,7 +352,8 @@ function VideoCanvasInner({
     const [isDraggingRotation, setIsDraggingRotation] = useState(false);
     const [videoHoverCorner, setVideoHoverCorner] = useState<Corner | null>("top-right");
     const dragStartPos = useRef({ x: 0, y: 0, initialRotation: 0, initialTranslateX: 0, initialTranslateY: 0 });
-    const lastAngleRef = useRef<number | null>(null);
+    const rotationCenterRef = useRef<{ x: number; y: number } | null>(null);
+    const rotationStartAngleRef = useRef<number>(0);
     const videoContainerRef = useRef<HTMLDivElement>(null);
     const clickStartPosRef = useRef<{ x: number; y: number } | null>(null);
     const CLICK_THRESHOLD = 5; // px
@@ -459,6 +500,13 @@ function VideoCanvasInner({
         horizontal: number[];
     }>({ vertical: [], horizontal: [] });
 
+    const [rotationGuide, setRotationGuide] = useState<{
+        centerX: number;
+        centerY: number;
+        angle: number;
+        snapped: boolean;
+    } | null>(null);
+
     // Wrapper for onElementSelect that also deselects the mockup/video
     const handleElementSelect = useCallback((id: string | null, preserveVideoSelection: boolean = false) => {
         if (id !== null && !preserveVideoSelection) {
@@ -555,6 +603,16 @@ function VideoCanvasInner({
 
     const hasMask = Object.keys(maskStyles).length > 0;
     const hasMockup = mockupId && mockupId !== "none";
+
+    // Effective aspect ratio for the "none" mockup contain-box, adjusted for
+    // any active crop — mirrors the same math used in drawFrame's computeContainer.
+    const mediaContainAspect = useMemo(() => {
+        if (!mediaAspect) return null;
+        if (cropArea && (cropArea.width < 100 || cropArea.height < 100)) {
+            return mediaAspect * (cropArea.width / cropArea.height);
+        }
+        return mediaAspect;
+    }, [mediaAspect, cropArea]);
     const effectivePhoneMaskConfig = useMemo(() => {
         return mediaType === "video" ? videoMaskConfig : imageMaskConfig;
     }, [mediaType, videoMaskConfig, imageMaskConfig]);
@@ -658,18 +716,19 @@ function VideoCanvasInner({
             if (!onVideoTransformChange) return;
 
             if (isDraggingRotation) {
-                const container = videoContainerRef.current;
-                if (!container) return;
-                const rect = container.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                const rawAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI) + 90;
-                if (lastAngleRef.current === null) lastAngleRef.current = rawAngle;
-                let delta = rawAngle - lastAngleRef.current;
-                if (delta > 180) delta -= 360;
-                if (delta < -180) delta += 360;
-                lastAngleRef.current = rawAngle;
-                onVideoTransformChange({ ...videoTransform, rotation: videoTransform.rotation + delta });
+                const center = rotationCenterRef.current;
+                if (!center) return;
+
+                const currentAngle = Math.atan2(e.clientY - center.y, e.clientX - center.x) * (180 / Math.PI);
+                let deltaAngle = currentAngle - rotationStartAngleRef.current;
+                if (deltaAngle > 180) deltaAngle -= 360;
+                if (deltaAngle < -180) deltaAngle += 360;
+
+                const rawRotation = dragStartPos.current.initialRotation + deltaAngle;
+                const { angle: finalRotation, snapped } = snapRotation(rawRotation);
+
+                onVideoTransformChange({ ...videoTransform, rotation: finalRotation });
+                setRotationGuide({ centerX: center.x, centerY: center.y, angle: finalRotation, snapped });
             } else if (isDraggingVideo) {
                 const deltaX = e.clientX - dragStartPos.current.x;
                 const deltaY = e.clientY - dragStartPos.current.y;
@@ -717,7 +776,8 @@ function VideoCanvasInner({
             setIsDraggingVideo(false);
             setIsDraggingRotation(false);
             setMockupAlignmentGuides({ vertical: [], horizontal: [] });
-            lastAngleRef.current = null;
+            setRotationGuide(null);
+            rotationCenterRef.current = null;
         };
 
         window.addEventListener("mousemove", handleMouseMove);
@@ -817,7 +877,12 @@ function VideoCanvasInner({
                 let deltaAngle = currentAngle - startAngle;
                 if (deltaAngle > 180) deltaAngle -= 360;
                 if (deltaAngle < -180) deltaAngle += 360;
-                onElementUpdate(selectedElementId, { rotation: elementDragStart.current.initialRotation + deltaAngle });
+
+                const rawRotation = elementDragStart.current.initialRotation + deltaAngle;
+                const { angle: finalRotation, snapped } = snapRotation(rawRotation);
+
+                onElementUpdate(selectedElementId, { rotation: finalRotation });
+                setRotationGuide({ centerX, centerY, angle: finalRotation, snapped });
             } else if (isDraggingElement) {
                 const container = canvasContainerRef.current;
                 if (!container) return;
@@ -924,6 +989,7 @@ function VideoCanvasInner({
             setIsDraggingElement(false);
             setIsDraggingElementRotation(false);
             setAlignmentGuides({ vertical: [], horizontal: [] });
+            setRotationGuide(null);
         };
 
         window.addEventListener("mousemove", handleMouseMove);
@@ -1887,6 +1953,8 @@ function VideoCanvasInner({
                 />
             )}
 
+            <RotationGuideLine rotationGuide={rotationGuide} />
+
             <div className="absolute inset-0 pointer-events-none z-0"
                 style={{ backgroundImage: 'radial-gradient(rgb(39, 39, 42) 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
             </div>
@@ -2098,7 +2166,22 @@ function VideoCanvasInner({
                                                     onMockupClick("2d");
                                                 }}
                                             >
-                                                <div className="relative">
+                                                <div
+                                                    className="relative"
+                                                    style={
+                                                        !hasMockup && mediaContainAspect
+                                                            ? {
+                                                                aspectRatio: `${mediaContainAspect}`,
+                                                                width: 'auto',
+                                                                height: 'auto',
+                                                                maxWidth: '100%',
+                                                                maxHeight: '100%',
+                                                                minWidth: 0,
+                                                                minHeight: 0,
+                                                            }
+                                                            : { width: '100%', height: '100%' }
+                                                    }
+                                                >
                                                     {isVideoSelected && videoHoverCorner && hasMedia && onVideoTransformChange && !isDraggingVideo && !isDraggingRotation && (
                                                         <div
                                                             data-rotation-handle
@@ -2106,7 +2189,13 @@ function VideoCanvasInner({
                                                             onMouseDown={(e) => {
                                                                 e.preventDefault();
                                                                 e.stopPropagation();
-                                                                lastAngleRef.current = null;
+                                                                const container = videoContainerRef.current;
+                                                                if (!container) return;
+                                                                const rect = container.getBoundingClientRect();
+                                                                const centerX = rect.left + rect.width / 2;
+                                                                const centerY = rect.top + rect.height / 2;
+                                                                rotationCenterRef.current = { x: centerX, y: centerY };
+                                                                rotationStartAngleRef.current = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
                                                                 setIsDraggingRotation(true);
                                                                 dragStartPos.current = {
                                                                     x: e.clientX,

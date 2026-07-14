@@ -1,5 +1,6 @@
 import { AspectRatio } from "@/types/editor.types";
 import { ZoomStateCanvas, ZoomFragment, calculateZoomPhaseState, zoomLevelToFactor, speedToTransitionMs, easeOutQuart } from "@/types/zoom.types";
+
 export function drawRoundedRect(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -297,7 +298,6 @@ export function calculateSmoothZoom(
     return DEFAULT_STATE;
 }
 
-
 // Functions to determine nearest corner and corner styles for rotating elements
 export type Corner = "top-left" | "top-right" | "bottom-right" | "bottom-left";
 
@@ -341,3 +341,27 @@ export const CORNER_ICON_ROTATION: Record<Corner, number> = {
     "bottom-left": 180,  // rotate 180°
     "top-left": 270,  // rotate 270°
 };
+
+export interface RotationSnapResult {
+    angle: number;
+    snapped: boolean;
+}
+
+const ROTATION_SNAP_STEP = 45;
+const ROTATION_SNAP_THRESHOLD = 4;
+
+export function snapRotation(
+    angle: number,
+    step: number = ROTATION_SNAP_STEP,
+    threshold: number = ROTATION_SNAP_THRESHOLD
+): RotationSnapResult {
+    const nearestSnap = Math.round(angle / step) * step;
+    if (Math.abs(angle - nearestSnap) <= threshold) {
+        return { angle: nearestSnap, snapped: true };
+    }
+    return { angle, snapped: false };
+}
+
+export function normalizeAngle(angle: number): number {
+    return ((angle % 360) + 360) % 360;
+}

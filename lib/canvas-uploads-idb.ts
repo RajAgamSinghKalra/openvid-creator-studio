@@ -1,4 +1,3 @@
-/** IDB para overlays subidos por el usuario (ElementsMenu → pestaña uploads). */
 import type { UploadedImage } from "@/types/canvas-elements.types";
 
 const DB_NAME    = "openvid-canvas-uploads";
