@@ -95,7 +95,9 @@ Add context to your demo with professional frames:
 <table>
   <tr>
     <td width="50%">
-      <img src="https://github.com/user-attachments/assets/82a82dc8-ce81-4d78-829e-12c9ef096758" alt="FreeCut multi-track timeline" width="100%" />
+         <a href="https://www.youtube.com/watch?v=BreTDBD_pGY" target="_blank">
+            <img src="https://github.com/user-attachments/assets/82a82dc8-ce81-4d78-829e-12c9ef096758" alt="FreeCut multi-track timeline" width="100%" />
+         </a>
     </td>
     <td width="50%">
       <img src="https://github.com/user-attachments/assets/901d74ce-3148-43f1-8b97-fd43f077d6f7" alt="FreeCut dopesheet keyframe editor" width="100%" />
