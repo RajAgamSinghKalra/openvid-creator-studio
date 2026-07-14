@@ -89,11 +89,9 @@ export function VideoCropperModal({
 
             let w: number, h: number;
             if (videoAspect > containerAspect) {
-                // el video es más "ancho" que el contenedor -> limita por ancho
                 w = containerW;
                 h = containerW / videoAspect;
             } else {
-                // el video es más "alto" (vertical, tu caso 9:16) -> limita por alto
                 h = containerH;
                 w = containerH * videoAspect;
             }
@@ -378,7 +376,6 @@ export function VideoCropperModal({
                             </div>
                         </div>
 
-                        {/* Sidebar Controls */}
                         <div className="w-56 shrink-0 border-l border-white/10 flex flex-col bg-[#0d0d0f]">
                             <div className="p-4 border-b border-white/10">
                                 <p className="text-[10px] uppercase tracking-widest font-semibold text-white/60 mb-3">
