@@ -963,7 +963,7 @@
       "group": "Grupo",
       "selected": "selec.",
       "groupAction": "Agrupar",
-      "ungroupAction": "Desag.",
+      "ungroupAction": "Desagrupar",
       "videoLayer": "Video",
       "imageLayer": "Imagen"
     }

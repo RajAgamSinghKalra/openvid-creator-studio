@@ -161,24 +161,3 @@ export async function clearAllThumbnailCache(): Promise<void> {
         console.warn("Failed to clear thumbnail cache:", error);
     }
 }
-
-export async function getThumbnailCacheInfo(): Promise<{ count: number; estimatedSize: string }> {
-    try {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(STORE_NAME, "readonly");
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.count();
-
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                resolve({
-                    count: request.result,
-                    estimatedSize: "Unknown",
-                });
-            };
-        });
-    } catch {
-        return { count: 0, estimatedSize: "0 B" };
-    }
-}

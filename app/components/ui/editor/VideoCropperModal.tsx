@@ -26,6 +26,8 @@ export function VideoCropperModal({
     const [wasOpen, setWasOpen] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const initialCropRef = useRef<CropArea>({ x: 0, y: 0, width: 100, height: 100 });
+    const videoBoxRef = useRef<HTMLDivElement>(null);
+    const [boxSize, setBoxSize] = useState({ width: 0, height: 0 });
 
     if (isOpen && !wasOpen) {
         setCropArea(initialCrop ?? { x: 0, y: 0, width: 100, height: 100 });
@@ -73,6 +75,42 @@ export function VideoCropperModal({
         });
     }, [videoDimensions]);
 
+    useEffect(() => {
+        function updateBoxSize() {
+            if (!containerRef.current || !videoDimensions.width || !videoDimensions.height) return;
+
+            const rect = containerRef.current.getBoundingClientRect();
+            const containerW = rect.width;
+            const containerH = rect.height;
+            if (containerW === 0 || containerH === 0) return;
+
+            const videoAspect = videoDimensions.width / videoDimensions.height;
+            const containerAspect = containerW / containerH;
+
+            let w: number, h: number;
+            if (videoAspect > containerAspect) {
+                w = containerW;
+                h = containerW / videoAspect;
+            } else {
+                h = containerH;
+                w = containerH * videoAspect;
+            }
+
+            setBoxSize({ width: w, height: h });
+        }
+
+        updateBoxSize();
+
+        const ro = new ResizeObserver(updateBoxSize);
+        if (containerRef.current) ro.observe(containerRef.current);
+        window.addEventListener("resize", updateBoxSize);
+
+        return () => {
+            ro.disconnect();
+            window.removeEventListener("resize", updateBoxSize);
+        };
+    }, [videoDimensions, isOpen]);
+
     const handleMouseDown = (e: React.MouseEvent, type: "move" | "resize", handle?: string) => {
         e.preventDefault();
         e.stopPropagation();
@@ -84,10 +122,10 @@ export function VideoCropperModal({
     };
 
     useEffect(() => {
-        if (!isDragging || !containerRef.current) return;
+        if (!isDragging || !videoBoxRef.current) return;
 
         const handleMouseMove = (e: MouseEvent) => {
-            const container = containerRef.current;
+            const container = videoBoxRef.current;
             if (!container) return;
             const rect = container.getBoundingClientRect();
             const deltaX = ((e.clientX - dragStartPos.current.x) / rect.width) * 100;
@@ -217,7 +255,7 @@ export function VideoCropperModal({
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0.96, opacity: 0, y: 8 }}
                     transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                    className="bg-[#0a0a0b] rounded-2xl border border-white/10 w-[92vw] max-w-5xl max-h-[88vh] flex flex-col overflow-hidden shadow-2xl"
+                    className="bg-[#0a0a0b] rounded-2xl border border-white/10 w-[94vw] max-w-6xl h-[88vh] flex flex-col overflow-hidden shadow-2xl"
                 >
                     <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
                         <div className="flex items-center gap-2.5">
@@ -247,16 +285,11 @@ export function VideoCropperModal({
                                 className="relative w-full h-full max-w-full max-h-full flex items-center justify-center"
                             >
                                 <div
+                                    ref={videoBoxRef}
                                     className="relative"
                                     style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        maxWidth: "100%",
-                                        maxHeight: "100%",
-                                        aspectRatio:
-                                            videoDimensions.width && videoDimensions.height
-                                                ? `${videoDimensions.width}/${videoDimensions.height}`
-                                                : "16/9",
+                                        width: boxSize.width || "100%",
+                                        height: boxSize.height || "100%",
                                     }}
                                 >
                                     {videoUrl ? (
@@ -309,9 +342,9 @@ export function VideoCropperModal({
                                             <div
                                                 key={handle}
                                                 className={`absolute w-3 h-3 bg-white rounded-sm shadow-lg ${handle === "nw" ? "-top-1.5 -left-1.5 cursor-nwse-resize" :
-                                                        handle === "ne" ? "-top-1.5 -right-1.5 cursor-nesw-resize" :
-                                                            handle === "sw" ? "-bottom-1.5 -left-1.5 cursor-nesw-resize" :
-                                                                "-bottom-1.5 -right-1.5 cursor-nwse-resize"
+                                                    handle === "ne" ? "-top-1.5 -right-1.5 cursor-nesw-resize" :
+                                                        handle === "sw" ? "-bottom-1.5 -left-1.5 cursor-nesw-resize" :
+                                                            "-bottom-1.5 -right-1.5 cursor-nwse-resize"
                                                     }`}
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
@@ -326,9 +359,9 @@ export function VideoCropperModal({
                                                 <div
                                                     key={handle}
                                                     className={`absolute bg-white rounded-sm ${handle === "n" ? "left-1/2 -translate-x-1/2 -top-0.75 cursor-ns-resize" :
-                                                            handle === "s" ? "left-1/2 -translate-x-1/2 -bottom-0.75 cursor-ns-resize" :
-                                                                handle === "w" ? "top-1/2 -translate-y-1/2 -left-0.75 cursor-ew-resize" :
-                                                                    "top-1/2 -translate-y-1/2 -right-0.75 cursor-ew-resize"
+                                                        handle === "s" ? "left-1/2 -translate-x-1/2 -bottom-0.75 cursor-ns-resize" :
+                                                            handle === "w" ? "top-1/2 -translate-y-1/2 -left-0.75 cursor-ew-resize" :
+                                                                "top-1/2 -translate-y-1/2 -right-0.75 cursor-ew-resize"
                                                         }`}
                                                     style={{ width: isVertical ? "28px" : "5px", height: isVertical ? "5px" : "28px" }}
                                                     onMouseDown={(e) => {
@@ -343,7 +376,6 @@ export function VideoCropperModal({
                             </div>
                         </div>
 
-                        {/* Sidebar Controls */}
                         <div className="w-56 shrink-0 border-l border-white/10 flex flex-col bg-[#0d0d0f]">
                             <div className="p-4 border-b border-white/10">
                                 <p className="text-[10px] uppercase tracking-widest font-semibold text-white/60 mb-3">
@@ -355,8 +387,8 @@ export function VideoCropperModal({
                                             <button
                                                 onClick={() => handleAspectRatioSelect(ratio.value)}
                                                 className={`w-full py-1.5 text-[11px] font-medium rounded-lg transition-all ${selectedAspectRatio === ratio.value
-                                                        ? "text-white border-transparent"
-                                                        : "bg-white/4 text-white/40 hover:bg-white/8 hover:text-white/70 border border-white/10"
+                                                    ? "text-white border-transparent"
+                                                    : "bg-white/4 text-white/40 hover:bg-white/8 hover:text-white/70 border border-white/10"
                                                     }`}
                                                 style={
                                                     selectedAspectRatio === ratio.value

@@ -26,7 +26,7 @@ export const PREVIEW_CONTAINER_WIDTH = 896;
 /**
  * Ancho del sidebar de etiquetas en el timeline (px)
  */
-export const TIMELINE_LABEL_WIDTH = 80;
+export const TIMELINE_LABEL_WIDTH = 56;
 
 /**
  * Duración mínima entre trim handles (segundos)

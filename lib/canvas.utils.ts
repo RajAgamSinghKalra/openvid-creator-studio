@@ -1,5 +1,6 @@
 import { AspectRatio } from "@/types/editor.types";
 import { ZoomStateCanvas, ZoomFragment, calculateZoomPhaseState, zoomLevelToFactor, speedToTransitionMs, easeOutQuart } from "@/types/zoom.types";
+
 export function drawRoundedRect(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -74,46 +75,6 @@ export function getAspectRatioNumber(ratio: AspectRatio, customDimensions?: { wi
         case "3:4": return 3 / 4;
         default: return 16 / 9;
     }
-}
-
-// Get max-width based on aspect ratio
-export function getMaxWidth(ratio: AspectRatio, customDimensions?: { width: number; height: number }): string {
-    if ((ratio === "custom" || ratio === "auto") && customDimensions) {
-        const aspectValue = customDimensions.width / customDimensions.height;
-        if (aspectValue > 1.5) return "52rem"; // Landscape
-        if (aspectValue < 0.7) return "20rem"; // Portrait
-        return "32rem"; // Square-ish
-    }
-    
-    switch (ratio) {
-        case "16:9": return "52rem";
-        case "9:16": return "20rem";
-        case "3:4": return "26rem";
-        case "4:3": return "40rem";
-        case "1:1": return "32rem";
-        default: return "52rem";
-    }
-}
-
-export function calculateScaledProperties(
-    padding: number,
-    roundedCorners: number,
-    shadows: number,
-    canvasWidth: number,
-    canvasHeight: number
-) {
-    const paddingPercent = padding * 0.5 / 100;
-    const scaledPaddingX = paddingPercent * canvasWidth;
-    const scaledPaddingY = paddingPercent * canvasHeight;
-    const scaledRadius = roundedCorners * (canvasWidth / 896);
-    const scaledShadowBlur = shadows * (canvasWidth / 896) * 0.3;
-
-    return {
-        scaledPaddingX,
-        scaledPaddingY,
-        scaledRadius,
-        scaledShadowBlur,
-    };
 }
 
 export function applyCanvasBackground(
@@ -337,7 +298,6 @@ export function calculateSmoothZoom(
     return DEFAULT_STATE;
 }
 
-
 // Functions to determine nearest corner and corner styles for rotating elements
 export type Corner = "top-left" | "top-right" | "bottom-right" | "bottom-left";
 
@@ -381,3 +341,27 @@ export const CORNER_ICON_ROTATION: Record<Corner, number> = {
     "bottom-left": 180,  // rotate 180°
     "top-left": 270,  // rotate 270°
 };
+
+export interface RotationSnapResult {
+    angle: number;
+    snapped: boolean;
+}
+
+const ROTATION_SNAP_STEP = 45;
+const ROTATION_SNAP_THRESHOLD = 4;
+
+export function snapRotation(
+    angle: number,
+    step: number = ROTATION_SNAP_STEP,
+    threshold: number = ROTATION_SNAP_THRESHOLD
+): RotationSnapResult {
+    const nearestSnap = Math.round(angle / step) * step;
+    if (Math.abs(angle - nearestSnap) <= threshold) {
+        return { angle: nearestSnap, snapped: true };
+    }
+    return { angle, snapped: false };
+}
+
+export function normalizeAngle(angle: number): number {
+    return ((angle % 360) + 360) % 360;
+}
