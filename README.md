@@ -5,10 +5,8 @@
   **Record your screen or upload a video, add smooth zooms, device mockups, 3D effects, and custom backgrounds - export a cinematic demo.**
 
 [![Next.js](https://img.shields.io/badge/Next.js-000000?logo=next.js&logoColor=white)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![FFmpeg.wasm](https://img.shields.io/badge/FFmpeg.wasm-007808?logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
 [![Three.js](https://img.shields.io/badge/Three.js-000000?logo=threedotjs&logoColor=white)](https://threejs.org)
-[![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![Discord Community](https://img.shields.io/badge/Discord-Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/aBu5A2tBXb)
 </div>
 
@@ -149,18 +147,17 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ¡Contributions are welcome! Join our **Discord** to collaborate: [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/aBu5A2tBXb)
 
-[![oosmetrics](https://api.oosmetrics.com/api/v1/badge/achievement/0035870f-b4f4-4b12-9a1c-bef97b6785af.svg)](https://oosmetrics.com/repo/CristianOlivera1/openvid)
-  
 ## Contributors
 <a href="https://github.com/CristianOlivera1/openvid/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=CristianOlivera1/openvid" />
 </a>
 
 ## Star History
+
 <a href="https://www.star-history.com/?repos=CristianOlivera1%2Fopenvid&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=CristianOlivera1/openvid&type=date&theme=dark&legend=top-left&sealed_token=omupWZiaOfQDXtTjRmV0r61iuKmXbLElc3kG764F5nFH7l53GmSlLASsn21bVXnXYrWX1gaJl9h2T-VNbwOCHRVWQmuLmMo2_oc9jHqhqSDETYLjX110PQ" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=CristianOlivera1/openvid&type=date&legend=top-left&sealed_token=omupWZiaOfQDXtTjRmV0r61iuKmXbLElc3kG764F5nFH7l53GmSlLASsn21bVXnXYrWX1gaJl9h2T-VNbwOCHRVWQmuLmMo2_oc9jHqhqSDETYLjX110PQ" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=CristianOlivera1/openvid&type=date&legend=top-left&sealed_token=omupWZiaOfQDXtTjRmV0r61iuKmXbLElc3kG764F5nFH7l53GmSlLASsn21bVXnXYrWX1gaJl9h2T-VNbwOCHRVWQmuLmMo2_oc9jHqhqSDETYLjX110PQ" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=CristianOlivera1/openvid&type=date&theme=dark&legend=top-left&sealed_token=TpeJFODI2SIfhIkfwBBtWYMUpiFjmZXkZkoNjFMrnSIdSPVKIFRdF6todRCnssa9Wpn1Gqh22ggHfVxMY0DbHPfLsTSBzGMcVy9vr2MG8YefmwviRr9KqQ" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=CristianOlivera1/openvid&type=date&legend=top-left&sealed_token=TpeJFODI2SIfhIkfwBBtWYMUpiFjmZXkZkoNjFMrnSIdSPVKIFRdF6todRCnssa9Wpn1Gqh22ggHfVxMY0DbHPfLsTSBzGMcVy9vr2MG8YefmwviRr9KqQ" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=CristianOlivera1/openvid&type=date&legend=top-left&sealed_token=TpeJFODI2SIfhIkfwBBtWYMUpiFjmZXkZkoNjFMrnSIdSPVKIFRdF6todRCnssa9Wpn1Gqh22ggHfVxMY0DbHPfLsTSBzGMcVy9vr2MG8YefmwviRr9KqQ" />
  </picture>
 </a>
