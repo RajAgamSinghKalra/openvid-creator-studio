@@ -361,7 +361,3 @@ export function snapRotation(
     }
     return { angle, snapped: false };
 }
-
-export function normalizeAngle(angle: number): number {
-    return ((angle % 360) + 360) % 360;
-}

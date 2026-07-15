@@ -2,7 +2,7 @@ import type { ZoomFragment } from "./zoom.types";
 import type { CanvasElement } from "./canvas-elements.types";
 import type { CursorConfig, CursorRecordingData } from "./cursor.types";
 
-export type Tool = "screenshot" | "elements" | "audio" | "zoom" | "mockup" | "cursor" | "videos" | "camera" | "history" | "motion";
+export type Tool = "screenshot" | "elements" | "audio" | "zoom" | "mockup" | "cursor" | "video" | "camera" | "history" | "motion";
 
 export type BackgroundTab = "wallpaper" | "image" | "color";
 
