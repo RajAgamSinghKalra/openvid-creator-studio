@@ -97,6 +97,7 @@ The list below covers the feature-level changes made in this fork.
 - Kept device scale independent from the whole-frame aspect ratio.
 - Added independent 2D mockup position, rotation, and scale.
 - Preserved dark/light frame styles, frame colors, header scale, and header opacity controls.
+- Added a device status-bar toggle for phone mockups, hiding the simulated time, signal, Wi-Fi, and battery without shifting the framed media.
 - Improved portrait-video fitting inside phone frames.
 - Made 2D mockup behavior consistent between preview and export.
 

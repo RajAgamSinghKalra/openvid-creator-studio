@@ -131,8 +131,9 @@ export function drawHardShellMockup(context: MockupCanvasContext): MockupDrawRes
   ctx.fill();
   ctx.restore();
 
-  const timeX = screenX + statusBarPaddingX;
-  const timeY = screenY + statusBarHeight / 2;
+  if (config.showStatusBar ?? true) {
+    const timeX = screenX + statusBarPaddingX;
+    const timeY = screenY + statusBarHeight / 2;
 
   ctx.save();
   ctx.font = `500 ${timeFontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
@@ -199,7 +200,8 @@ export function drawHardShellMockup(context: MockupCanvasContext): MockupDrawRes
   const textMetrics = ctx.measureText(text5G);
   const text5GX = sigX - 16 * headerScale - textMetrics.width;
   ctx.fillText(text5G, text5GX, timeY + 1);
-  ctx.restore();
+    ctx.restore();
+  }
 
   const homeIndicatorX = screenX + (screenWidth - homeIndicatorWidth) / 2;
   const homeIndicatorY = screenY + screenHeight - homeIndicatorBottom - homeIndicatorHeight;

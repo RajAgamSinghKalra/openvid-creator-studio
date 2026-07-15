@@ -86,6 +86,7 @@ export function createInitialEditorState(overrides?: Partial<EditorState>): Edit
             url: "",
             headerScale: 100,
             headerOpacity: 100,
+            showStatusBar: true,
             cornerRadius: 10,
         },
         canvasElements: [],

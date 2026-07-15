@@ -639,6 +639,10 @@
       "label": "페이지 URL",
       "placeholder": "https://your-site.com"
     },
+    "statusBar": {
+      "label": "기기 상태 표시줄",
+      "description": "목업 시간, 신호, Wi-Fi 및 배터리 표시"
+    },
     "sliders": {
       "headerScale": "헤더 크기",
       "headerOpacity": "헤더 불투명도"

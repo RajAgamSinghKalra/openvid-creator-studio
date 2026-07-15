@@ -48,6 +48,7 @@ export function Mockup2dMenu({
   const handleUrlChange = (url: string) => onMockupConfigChange?.({ url });
   const handleHeaderScaleChange = (headerScale: number) => onMockupConfigChange?.({ headerScale });
   const handleHeaderOpacityChange = (headerOpacity: number) => onMockupConfigChange?.({ headerOpacity });
+  const handleStatusBarChange = () => onMockupConfigChange?.({ showStatusBar: !(mockupConfig?.showStatusBar ?? true) });
 
   const handleRemove = () => {
     onMockupChange?.("none");
@@ -200,6 +201,28 @@ export function Mockup2dMenu({
                 aria-label={t("url.label")}
               />
             </div>
+          </div>
+        )}
+
+        {features.hasStatusBar && (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-white/[0.07] bg-white/3 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Icon icon="mdi:signal-cellular-3" width="15" className="shrink-0 text-white/45" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-white/70">{t("statusBar.label")}</p>
+                <p className="text-[9px] leading-relaxed text-white/30">{t("statusBar.description")}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={mockupConfig?.showStatusBar ?? true}
+              aria-label={t("statusBar.label")}
+              onClick={handleStatusBarChange}
+              className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${(mockupConfig?.showStatusBar ?? true) ? "border-emerald-400/40 bg-emerald-500/70" : "border-white/10 bg-white/10"}`}
+            >
+              <span className={`absolute top-0.5 size-3.5 rounded-full bg-white shadow-sm transition-transform ${(mockupConfig?.showStatusBar ?? true) ? "translate-x-4" : "translate-x-0.5"}`} />
+            </button>
           </div>
         )}
 

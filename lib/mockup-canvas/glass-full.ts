@@ -152,8 +152,9 @@ export function drawGlassFullMockup(context: MockupCanvasContext): MockupDrawRes
   ctx.fill();
   ctx.restore();
 
-  const statusBarCenterY = screenY + statusBarHeight / 2;
-  const rightEdgeX = screenX + screenWidth - statusBarPaddingX;
+  if (config.showStatusBar ?? true) {
+    const statusBarCenterY = screenY + statusBarHeight / 2;
+    const rightEdgeX = screenX + screenWidth - statusBarPaddingX;
 
   const timeX = screenX + statusBarPaddingX;
   ctx.save();
@@ -217,7 +218,8 @@ export function drawGlassFullMockup(context: MockupCanvasContext): MockupDrawRes
     }
     ctx.fill();
   });
-  ctx.restore();
+    ctx.restore();
+  }
 
   const homeIndicatorX = screenX + (screenWidth - homeIndicatorWidth) / 2;
   const homeIndicatorY = screenY + screenHeight - homeIndicatorBottom - homeIndicatorHeight;

@@ -284,6 +284,7 @@ export const MOCKUPS: Mockup[] = [
             hasHeaderScale: true,
             hasCornerRadius: true,
             hasHeaderOpacity: true,
+            hasStatusBar: true,
         },
         defaultConfig: {
             darkMode: true,
@@ -328,6 +329,7 @@ export const MOCKUPS: Mockup[] = [
             hasHeaderScale: true,
             hasCornerRadius: true,
             hasHeaderOpacity: true,
+            hasStatusBar: true,
         },
         defaultConfig: {
             darkMode: false,
@@ -350,6 +352,7 @@ export const MOCKUPS: Mockup[] = [
             hasHeaderScale: true,
             hasCornerRadius: true,
             hasHeaderOpacity: false,
+            hasStatusBar: true,
         },
         defaultConfig: {
             darkMode: false,
@@ -371,6 +374,7 @@ export const MOCKUPS: Mockup[] = [
             hasHeaderScale: true,
             hasCornerRadius: true,
             hasHeaderOpacity: false,
+            hasStatusBar: true,
         },
         defaultConfig: {
             darkMode: true,

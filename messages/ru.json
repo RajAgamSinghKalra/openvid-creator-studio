@@ -607,6 +607,10 @@
       "label": "URL страницы",
       "placeholder": "https://ваш-сайт.com"
     },
+    "statusBar": {
+      "label": "Строка состояния устройства",
+      "description": "Показывать время, сигнал, Wi-Fi и заряд макета"
+    },
     "sliders": {
       "headerScale": "Масштаб заголовка",
       "headerOpacity": "Прозрачность заголовка"

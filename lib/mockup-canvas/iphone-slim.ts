@@ -107,8 +107,9 @@ export function drawIPhoneSlimMockup(context: MockupCanvasContext): MockupDrawRe
   ctx.fill();
   ctx.restore();
 
-  const timeX = screenX + statusBarPaddingX;
-  const timeY = screenY + (statusBarHeight / 2) - (6 * headerScale);
+  if (config.showStatusBar ?? true) {
+    const timeX = screenX + statusBarPaddingX;
+    const timeY = screenY + (statusBarHeight / 2) - (6 * headerScale);
 
   ctx.save();
   ctx.font = `bold ${timeFontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
@@ -127,7 +128,8 @@ export function drawIPhoneSlimMockup(context: MockupCanvasContext): MockupDrawRe
 
   const signalX = wifiX - iconStatusSize - 8 * headerScale;
   const signalY = timeY - (iconStatusSize / 2);
-  drawSignalBars(ctx, signalX, signalY, iconStatusSize, statusBarText);
+    drawSignalBars(ctx, signalX, signalY, iconStatusSize, statusBarText);
+  }
 
   const homeIndicatorWidth = screenWidth * 0.35;
   const homeIndicatorX = screenX + (screenWidth - homeIndicatorWidth) / 2;

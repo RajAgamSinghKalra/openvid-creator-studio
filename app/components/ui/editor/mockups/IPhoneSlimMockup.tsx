@@ -113,7 +113,7 @@ export function IPhoneSlimMockup({
             />
           </div>
 
-          <div
+          {(config.showStatusBar ?? true) && <div
             className="absolute -top-2 w-full flex items-center justify-between z-20"
             style={{
               height: `max(${statusBarHeight}px, 7%)`,
@@ -178,7 +178,7 @@ export function IPhoneSlimMockup({
                 />
               </div>
             </div>
-          </div>
+          </div>}
 
           <div
             className="w-full h-full relative overflow-hidden"

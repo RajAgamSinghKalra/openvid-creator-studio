@@ -125,7 +125,7 @@ export function S24UltraMockup({
                         />
                     </div>
 
-                    <div
+                    {(config.showStatusBar ?? true) && <div
                         className="absolute top-0 w-full flex items-center justify-between z-10"
                         style={{
                             height: `${statusBarHeight}px`,
@@ -178,7 +178,7 @@ export function S24UltraMockup({
                                 />
                             </div>
                         </div>
-                    </div>
+                    </div>}
 
                     <div
                         className="relative w-full h-full flex flex-col"

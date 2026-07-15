@@ -110,7 +110,8 @@ export function drawS24UltraMockup(context: MockupCanvasContext): MockupDrawResu
   ctx.fill();
   ctx.restore();
 
-  const statusYCenter = screenY + (statusBarHeight / 2);
+  if (config.showStatusBar ?? true) {
+    const statusYCenter = screenY + (statusBarHeight / 2);
 
   ctx.save();
   ctx.font = `500 ${timeFontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
@@ -155,7 +156,8 @@ export function drawS24UltraMockup(context: MockupCanvasContext): MockupDrawResu
   ctx.fillStyle = textAndIconColor;
   ctx.globalAlpha = 0.8;
   ctx.fill(wifiPath);
-  ctx.restore();
+    ctx.restore();
+  }
 
   const navYCenter = screenY + screenHeight - navBarHeight / 2;
   const navCenterX = screenX + screenWidth / 2;

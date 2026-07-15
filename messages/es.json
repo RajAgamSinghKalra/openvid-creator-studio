@@ -595,6 +595,10 @@
       "label": "URL de página",
       "placeholder": "https://tu-sitio.com"
     },
+    "statusBar": {
+      "label": "Barra de estado del dispositivo",
+      "description": "Mostrar hora, señal, Wi-Fi y batería del marco"
+    },
     "sliders": {
       "headerScale": "Escala del encabezado",
       "headerOpacity": "Transparencia del encabezado"

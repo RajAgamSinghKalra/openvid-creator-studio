@@ -12,6 +12,7 @@ export interface MockupFeatures {
     hasUrl: boolean;
     hasHeaderScale: boolean; // Proportional header scale
     hasHeaderOpacity: boolean; // Header/frame opacity
+    hasStatusBar?: boolean; // Simulated mobile time/network/battery indicators
     hasCornerRadius: boolean;
 }
 
@@ -22,6 +23,7 @@ export interface MockupConfig {
     url: string;
     headerScale: number;     // Header scale (50-150, where 100 is normal)
     headerOpacity: number;   // Header opacity (0-100)
+    showStatusBar?: boolean;  // Show simulated mobile status indicators
     cornerRadius: number;
 }
 
@@ -56,6 +58,7 @@ export const DEFAULT_MOCKUP_CONFIG: MockupConfig = {
     url: "https://openvid.dev",
     headerScale: 60,        // 100% = normal size
     headerOpacity: 100,     // 100% = fully opaque
+    showStatusBar: true,
     cornerRadius: 12,
 };
 
@@ -67,6 +70,7 @@ export const DEFAULT_MOCKUP_FEATURES: MockupFeatures = {
     hasHeaderScale: false,
     hasCornerRadius: false,
     hasHeaderOpacity: false,
+    hasStatusBar: false,
 };
 
 export function getMockupFeatures(mockup: Mockup | undefined): MockupFeatures {

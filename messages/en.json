@@ -639,6 +639,10 @@
       "label": "Page URL",
       "placeholder": "https://your-site.com"
     },
+    "statusBar": {
+      "label": "Device status bar",
+      "description": "Show mockup time, signal, Wi-Fi, and battery"
+    },
     "sliders": {
       "headerScale": "Header scale",
       "headerOpacity": "Header opacity"
