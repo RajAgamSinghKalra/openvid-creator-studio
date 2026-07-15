@@ -3,7 +3,7 @@
 import { Icon } from "@iconify/react";
 import { ExportDropdown } from "../ExportDropdown";
 import { ExportImageDropdown } from "../ExportImageDropdown";
-import type { ExportQuality, ExportProgress } from "@/types";
+import type { AspectRatio, ExportQuality, ExportProgress } from "@/types";
 import type { EditorMode } from "@/types/editor-mode.types";
 import type { ImageExportFormat } from "@/types/image-project.types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,6 +35,11 @@ interface EditorTopBarProps {
     imageExportProgress?: ImageExportProgress;
     canvasWidth?: number;
     canvasHeight?: number;
+    aspectRatio?: AspectRatio;
+    customDimensions?: { width: number; height: number } | null;
+    sourceDimensions?: { width: number; height: number } | null;
+    onAspectRatioChange?: (ratio: AspectRatio) => void;
+    onCustomDimensionsChange?: (dimensions: { width: number; height: number }) => void;
     onSaveProject?: () => void;
     onOpenProjects?: () => void;
     projectName?: string;
@@ -54,6 +59,11 @@ export function EditorTopBar({
     imageExportProgress,
     canvasWidth = 1920,
     canvasHeight = 1080,
+    aspectRatio = "auto",
+    customDimensions,
+    sourceDimensions,
+    onAspectRatioChange,
+    onCustomDimensionsChange,
     onSaveProject,
     onOpenProjects,
     projectName,
@@ -189,6 +199,11 @@ export function EditorTopBar({
                         onExport={onExport}
                         exportProgress={exportProgress}
                         hasTransparentBackground={hasTransparentBackground}
+                        aspectRatio={aspectRatio}
+                        customDimensions={customDimensions}
+                        sourceDimensions={sourceDimensions}
+                        onAspectRatioChange={onAspectRatioChange}
+                        onCustomDimensionsChange={onCustomDimensionsChange}
                     />
                 )}
 

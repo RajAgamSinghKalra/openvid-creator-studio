@@ -1,4 +1,5 @@
 import { CropArea } from "./editor.types";
+import type { AspectRatio } from "./editor.types";
 import type { VideoTrackClip } from "./video-track.types";
 
 export type ExportQuality = "4k" | "2k" | "1080p" | "720p" | "480p" | "gif" | "webm-alpha";
@@ -10,6 +11,9 @@ export interface TrimSettings {
 
 export interface ExportSettings {
     quality: ExportQuality;
+    aspectRatio?: AspectRatio;
+    customDimensions?: { width: number; height: number } | null;
+    sourceDimensions?: { width: number; height: number } | null;
     fps?: number;
     trim?: TrimSettings;
     transparentBackground?: boolean;

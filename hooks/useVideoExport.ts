@@ -6,6 +6,7 @@ import type { VideoCanvasHandle } from "@/types";
 import type { ExportQuality, ExportSettings, ExportProgress } from "@/types";
 import { getClipPlaybackRate, getClipTimelineDuration, timelineToClipTime, type VideoTrackClip } from "@/types/video-track.types";
 import { QUALITY_SETTINGS, DEFAULT_EXPORT_FPS } from "@/lib/constants";
+import { resolveExportResolution } from "@/lib/export-resolution";
 import { ensureVideoReady, seekVideoToTime, downloadBlob } from "@/lib/video.utils";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { toBlobURL } from "@ffmpeg/util";
@@ -133,25 +134,12 @@ export function useVideoExport(
 
             const originalWidth = exportCanvas.width;
             const originalHeight = exportCanvas.height;
-            const originalAspectRatio = originalWidth / originalHeight;
-            const qualityAspectRatio = qualitySettings.width / qualitySettings.height;
-
-            let targetWidth: number;
-            let targetHeight: number;
-
-            if (Math.abs(originalAspectRatio - qualityAspectRatio) < 0.01) {
-                targetWidth = qualitySettings.width;
-                targetHeight = qualitySettings.height;
-            } else if (originalAspectRatio > qualityAspectRatio) {
-                targetWidth = qualitySettings.width;
-                targetHeight = Math.round(qualitySettings.width / originalAspectRatio);
-            } else {
-                targetHeight = qualitySettings.height;
-                targetWidth = Math.round(qualitySettings.height * originalAspectRatio);
-            }
-
-            targetWidth = Math.round(targetWidth / 2) * 2;
-            targetHeight = Math.round(targetHeight / 2) * 2;
+            const { width: targetWidth, height: targetHeight } = resolveExportResolution(settings.quality, {
+                aspectRatio: settings.aspectRatio,
+                customDimensions: settings.customDimensions,
+                sourceDimensions: settings.sourceDimensions,
+                fallbackDimensions: { width: originalWidth, height: originalHeight },
+            });
 
             exportCanvas.width = targetWidth;
             exportCanvas.height = targetHeight;

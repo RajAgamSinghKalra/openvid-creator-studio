@@ -2201,6 +2201,9 @@ export default function Editor() {
             }
             await exportVideo({
                 quality,
+                aspectRatio,
+                customDimensions,
+                sourceDimensions: videoDimensions,
                 videoBlob: videoBlob ?? undefined,
                 transparentBackground: backgroundTab === "wallpaper" && selectedWallpaper === -1,
                 trim: trimRange.end > trimRange.start ? { start: trimRange.start, end: trimRange.end } : undefined,
@@ -3776,6 +3779,11 @@ export default function Editor() {
             imageExportProgress={imageExportProgress}
             canvasWidth={customAspectRatio?.width || 1920}
             canvasHeight={customAspectRatio?.height || 1080}
+            aspectRatio={aspectRatio}
+            customDimensions={customDimensions}
+            sourceDimensions={videoDimensions}
+            onAspectRatioChange={setAspectRatio}
+            onCustomDimensionsChange={setCustomDimensions}
             onSaveProject={saveLocalProject}
             onOpenProjects={() => { setLocalProjectsOpen(true); void refreshLocalProjects(); }}
             projectName={currentLocalProjectName}
@@ -3784,7 +3792,8 @@ export default function Editor() {
     ), [
         handleExport, exportProgress, backgroundTab, selectedWallpaper, handleUndo, handleRedo,
         canUndo, canRedo, editorMode, handleImageExport, imageExportProgress,
-        customAspectRatio?.width, customAspectRatio?.height, saveLocalProject, refreshLocalProjects,
+        customAspectRatio?.width, customAspectRatio?.height, aspectRatio, customDimensions, videoDimensions,
+        saveLocalProject, refreshLocalProjects,
         currentLocalProjectName, localProjectSaving,
     ]);
 
