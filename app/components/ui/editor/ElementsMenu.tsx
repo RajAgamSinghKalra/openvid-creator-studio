@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, startTransition, useCallback, useLayoutEff
 import { useTranslations } from "next-intl";
 import { SliderControl } from "../../../../components/ui/SliderControl";
 import { SVG_CATEGORIES, IMAGE_CATEGORIES, PINNED_SVG_ITEMS, PINNED_IMAGE_ITEMS, getImagePreviewPath } from "@/lib/canvas-elements.config";
-import { SvgElement, TextElement, ImageElement, ElementsMenuProps, PRESET_COLORS, TEXT_PRESETS, TEXT_TEMPLATES, FONT_FAMILIES, FONT_WEIGHTS, UploadedImage, ACCEPTED_FORMATS, MAX_FILE_SIZE, type TextAnimationType, type TextTemplate } from "@/types/canvas-elements.types";
+import { SvgElement, TextElement, ImageElement, ElementsMenuProps, PRESET_COLORS, TEXT_PRESETS, TEXT_TEMPLATES, FONT_FAMILIES, FONT_WEIGHTS, UploadedImage, ACCEPTED_FORMATS, MAX_FILE_SIZE, type TextAnimationEasing, type TextAnimationType, type TextFontWeight, type TextTemplate } from "@/types/canvas-elements.types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import { SVG_COMPONENTS } from "@/components/canvas-svg";
 import { TooltipAction } from "@/components/ui/tooltip-action";
 import { ProgressiveImg } from "@/components/ui/ProgressiveImg";
 import { canvasUploadsClear, canvasUploadsDelete, canvasUploadsGetAll, canvasUploadsSave } from "@/lib/canvas-uploads-idb";
-import { getTextFontFamilyCss } from "@/lib/text-rendering";
+import { getTextFontFamilyCss, getTextFontWeight } from "@/lib/text-rendering";
+import { importCustomFont, loadAndRegisterCustomFonts, type CustomFontRecord } from "@/lib/custom-fonts";
 
 interface ExtendedElementsMenuProps extends ElementsMenuProps {
     textTabTrigger?: number;
@@ -37,7 +38,7 @@ export function ElementsMenu({
     const [textColor, setTextColor] = useState("#FFFFFF");
     const [textOpacity, setTextOpacity] = useState(100);
     const [textFontFamily, setTextFontFamily] = useState("Inter");
-    const [textFontWeight, setTextFontWeight] = useState<"normal" | "medium" | "bold">("bold");
+    const [textFontWeight, setTextFontWeight] = useState<TextFontWeight>("bold");
     const [textFontStyle, setTextFontStyle] = useState<"normal" | "italic">("normal");
     const [textDecoration, setTextDecoration] = useState<"none" | "underline" | "line-through">("none");
     const [textAlign, setTextAlign] = useState<"left" | "center" | "right">("center");
@@ -54,10 +55,20 @@ export function ElementsMenu({
     const [textShadowBlur, setTextShadowBlur] = useState(0);
     const [textShadowOffsetX, setTextShadowOffsetX] = useState(0);
     const [textShadowOffsetY, setTextShadowOffsetY] = useState(4);
+    const [textFillType, setTextFillType] = useState<"solid" | "gradient">("solid");
+    const [textGradientColor, setTextGradientColor] = useState("#A855F7");
+    const [textGradientAngle, setTextGradientAngle] = useState(90);
+    const [textGlowColor, setTextGlowColor] = useState("#A855F7");
+    const [textGlowBlur, setTextGlowBlur] = useState(0);
     const [textAnimationType, setTextAnimationType] = useState<TextAnimationType>("none");
     const [textAnimationDuration, setTextAnimationDuration] = useState(0.5);
     const [textAnimationDelay, setTextAnimationDelay] = useState(0);
     const [textAnimationIntensity, setTextAnimationIntensity] = useState(50);
+    const [textAnimationEasing, setTextAnimationEasing] = useState<TextAnimationEasing>("ease-out");
+    const [textExitAnimationType, setTextExitAnimationType] = useState<TextAnimationType>("none");
+    const [textExitAnimationDuration, setTextExitAnimationDuration] = useState(0.5);
+    const [textExitAnimationIntensity, setTextExitAnimationIntensity] = useState(50);
+    const [textExitAnimationEasing, setTextExitAnimationEasing] = useState<TextAnimationEasing>("ease-in");
     const [textStartTime, setTextStartTime] = useState(0);
     const [textEndTime, setTextEndTime] = useState(0);
     const [imageOpacity, setImageOpacity] = useState(100);
@@ -71,6 +82,10 @@ export function ElementsMenu({
 
     const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
     const [isUploading, setIsUploading] = useState(false);
+    const [customFonts, setCustomFonts] = useState<CustomFontRecord[]>([]);
+    const [isImportingFont, setIsImportingFont] = useState(false);
+    const [fontImportError, setFontImportError] = useState("");
+    const fontInputRef = useRef<HTMLInputElement>(null);
 
     const isSyncing = useRef(false);
     const lastSelectedId = useRef<string | null>(null);
@@ -122,10 +137,20 @@ export function ElementsMenu({
                     setTextShadowBlur(selectedElement.shadowBlur ?? 0);
                     setTextShadowOffsetX(selectedElement.shadowOffsetX ?? 0);
                     setTextShadowOffsetY(selectedElement.shadowOffsetY ?? 4);
+                    setTextFillType(selectedElement.fillType ?? "solid");
+                    setTextGradientColor(selectedElement.gradientColor ?? "#A855F7");
+                    setTextGradientAngle(selectedElement.gradientAngle ?? 90);
+                    setTextGlowColor(selectedElement.glowColor ?? "#A855F7");
+                    setTextGlowBlur(selectedElement.glowBlur ?? 0);
                     setTextAnimationType(selectedElement.animation?.type ?? "none");
                     setTextAnimationDuration(selectedElement.animation?.duration ?? 0.5);
                     setTextAnimationDelay(selectedElement.animation?.delay ?? 0);
                     setTextAnimationIntensity(selectedElement.animation?.intensity ?? 50);
+                    setTextAnimationEasing(selectedElement.animation?.easing ?? "ease-out");
+                    setTextExitAnimationType(selectedElement.animation?.outType ?? "none");
+                    setTextExitAnimationDuration(selectedElement.animation?.outDuration ?? 0.5);
+                    setTextExitAnimationIntensity(selectedElement.animation?.outIntensity ?? 50);
+                    setTextExitAnimationEasing(selectedElement.animation?.outEasing ?? "ease-in");
                     setTextStartTime(selectedElement.startTime ?? 0);
                     setTextEndTime(Number.isFinite(selectedElement.endTime) ? selectedElement.endTime! : 0);
                     setMode("text");
@@ -142,8 +167,13 @@ export function ElementsMenu({
                 setTextBackgroundPadding(12); setTextBackgroundRadius(8);
                 setTextShadowColor("#000000"); setTextShadowBlur(0);
                 setTextShadowOffsetX(0); setTextShadowOffsetY(4);
+                setTextFillType("solid"); setTextGradientColor("#A855F7");
+                setTextGradientAngle(90); setTextGlowColor("#A855F7"); setTextGlowBlur(0);
                 setTextAnimationType("none"); setTextAnimationDuration(0.5);
                 setTextAnimationDelay(0); setTextAnimationIntensity(50);
+                setTextAnimationEasing("ease-out"); setTextExitAnimationType("none");
+                setTextExitAnimationDuration(0.5); setTextExitAnimationIntensity(50);
+                setTextExitAnimationEasing("ease-in");
                 setTextStartTime(0); setTextEndTime(0);
             }
             setTimeout(() => { isSyncing.current = false; }, 0);
@@ -181,23 +211,52 @@ export function ElementsMenu({
                 backgroundOpacity: textBackgroundOpacity / 100, backgroundPadding: textBackgroundPadding,
                 backgroundRadius: textBackgroundRadius, shadowColor: textShadowColor,
                 shadowBlur: textShadowBlur, shadowOffsetX: textShadowOffsetX,
-                shadowOffsetY: textShadowOffsetY, startTime: textStartTime,
+                shadowOffsetY: textShadowOffsetY, fillType: textFillType,
+                gradientColor: textGradientColor, gradientAngle: textGradientAngle,
+                glowColor: textGlowColor, glowBlur: textGlowBlur, startTime: textStartTime,
                 endTime: textEndTime > 0 ? textEndTime : undefined,
-                animation: { type: textAnimationType, duration: textAnimationDuration, delay: textAnimationDelay, intensity: textAnimationIntensity },
+                animation: {
+                    type: textAnimationType, duration: textAnimationDuration, delay: textAnimationDelay,
+                    intensity: textAnimationIntensity, easing: textAnimationEasing,
+                    outType: textExitAnimationType, outDuration: textExitAnimationDuration,
+                    outIntensity: textExitAnimationIntensity, outEasing: textExitAnimationEasing,
+                },
             });
         }
     }, [textContent, textFontSize, textColor, textOpacity, textFontFamily,
         textFontWeight, textFontStyle, textDecoration, textAlign, textLetterSpacing,
         textLineHeight, textTransform, textStrokeColor, textStrokeWidth, textBackgroundColor,
         textBackgroundOpacity, textBackgroundPadding, textBackgroundRadius, textShadowColor,
-        textShadowBlur, textShadowOffsetX, textShadowOffsetY, textAnimationType, textAnimationDuration, textAnimationDelay,
-        textAnimationIntensity, textStartTime, textEndTime, selectedElement?.id, selectedElement?.type]);
+        textShadowBlur, textShadowOffsetX, textShadowOffsetY, textFillType, textGradientColor,
+        textGradientAngle, textGlowColor, textGlowBlur, textAnimationType, textAnimationDuration, textAnimationDelay,
+        textAnimationIntensity, textAnimationEasing, textExitAnimationType, textExitAnimationDuration,
+        textExitAnimationIntensity, textExitAnimationEasing, textStartTime, textEndTime, selectedElement?.id, selectedElement?.type]);
 
     useEffect(() => {
         canvasUploadsGetAll()
             .then(entries => setUploadedImages(entries))
             .catch(err => console.error("Error loading canvas uploads:", err));
+        loadAndRegisterCustomFonts()
+            .then(setCustomFonts)
+            .catch(error => console.error("Error loading custom fonts:", error));
     }, []);
+
+    const handleFontImport = useCallback(async (files: FileList | null) => {
+        const file = files?.[0];
+        if (!file || isImportingFont) return;
+        setIsImportingFont(true);
+        setFontImportError("");
+        try {
+            const font = await importCustomFont(file);
+            setCustomFonts(previous => [font, ...previous]);
+            setTextFontFamily(font.family);
+        } catch (error) {
+            setFontImportError(error instanceof Error ? error.message : "Could not import this font.");
+        } finally {
+            setIsImportingFont(false);
+            if (fontInputRef.current) fontInputRef.current.value = "";
+        }
+    }, [isImportingFont]);
 
     const handleImageUpload = useCallback(async (files: FileList | null) => {
         if (!files || files.length === 0) return;
@@ -332,8 +391,15 @@ export function ElementsMenu({
             backgroundPadding: textBackgroundPadding, backgroundRadius: textBackgroundRadius,
             shadowColor: textShadowColor, shadowBlur: textShadowBlur,
             shadowOffsetX: textShadowOffsetX, shadowOffsetY: textShadowOffsetY,
+            fillType: textFillType, gradientColor: textGradientColor,
+            gradientAngle: textGradientAngle, glowColor: textGlowColor, glowBlur: textGlowBlur,
             startTime: textStartTime, endTime: textEndTime > 0 ? textEndTime : undefined,
-            animation: { type: textAnimationType, duration: textAnimationDuration, delay: textAnimationDelay, intensity: textAnimationIntensity },
+            animation: {
+                type: textAnimationType, duration: textAnimationDuration, delay: textAnimationDelay,
+                intensity: textAnimationIntensity, easing: textAnimationEasing,
+                outType: textExitAnimationType, outDuration: textExitAnimationDuration,
+                outIntensity: textExitAnimationIntensity, outEasing: textExitAnimationEasing,
+            },
             ...overrides,
         };
     };
@@ -540,7 +606,7 @@ export function ElementsMenu({
                         <div className="grid grid-cols-2 gap-2">
                             {TEXT_TEMPLATES.map((template) => (
                                 <button key={template.id} onClick={() => { const timestamp = Date.now(); applyTextTemplate(template, timestamp, `text-${timestamp}-${crypto.randomUUID()}`); }} className="min-h-20 overflow-hidden bg-white/3 hover:bg-white/[0.08] border border-white/[0.07] hover:border-white/20 squircle-element p-2.5 text-left transition-all active:scale-[.98]">
-                                    <div className="truncate text-white leading-tight" style={{ fontFamily: getTextFontFamilyCss(template.style.fontFamily ?? "Inter"), fontWeight: template.style.fontWeight === "bold" ? 700 : template.style.fontWeight === "medium" ? 500 : 400, color: template.style.color ?? "#ffffff", letterSpacing: `${Math.max(-1, Math.min(3, (template.style.letterSpacing ?? 0) / 3))}px`, textShadow: (template.style.shadowBlur ?? 0) > 0 ? `0 0 8px ${template.style.shadowColor}` : undefined }}>{template.preview}</div>
+                                    <div className="truncate text-white leading-tight" style={{ fontFamily: getTextFontFamilyCss(template.style.fontFamily ?? "Inter"), fontWeight: getTextFontWeight(template.style.fontWeight ?? "normal"), color: template.style.color ?? "#ffffff", letterSpacing: `${Math.max(-1, Math.min(3, (template.style.letterSpacing ?? 0) / 3))}px`, textShadow: (template.style.shadowBlur ?? 0) > 0 ? `0 0 8px ${template.style.shadowColor}` : undefined }}>{template.preview}</div>
                                     <div className="mt-2 text-[9px] font-semibold text-white/55">{template.name}</div>
                                     <div className="text-[8px] text-white/30 truncate">{template.description}</div>
                                 </button>
@@ -579,8 +645,17 @@ export function ElementsMenu({
                                     {FONT_FAMILIES.map((f) => (
                                         <SelectItem key={f} value={f} className="text-white/80 hover:bg-white/10 cursor-pointer" style={{ fontFamily: getTextFontFamilyCss(f) }}>{f}</SelectItem>
                                     ))}
+                                    {customFonts.map((font) => (
+                                        <SelectItem key={font.id} value={font.family} className="text-violet-200 hover:bg-white/10 cursor-pointer" style={{ fontFamily: getTextFontFamilyCss(font.family) }}>{font.family}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
+                            <button type="button" onClick={() => fontInputRef.current?.click()} disabled={isImportingFont} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-violet-400/25 bg-violet-500/5 px-2 py-1.5 text-[9px] font-medium text-violet-300 transition hover:bg-violet-500/10 disabled:opacity-50">
+                                <Icon icon={isImportingFont ? "svg-spinners:ring-resize" : "ph:upload-simple-bold"} width="12" />
+                                {isImportingFont ? "Loading font…" : "Import TTF / OTF / WOFF"}
+                            </button>
+                            <input ref={fontInputRef} type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" className="hidden" onChange={(event) => void handleFontImport(event.target.files)} />
+                            {fontImportError && <p className="mt-1 text-[8px] leading-relaxed text-red-300">{fontImportError}</p>}
                         </div>
                     </div>
 
@@ -635,12 +710,21 @@ export function ElementsMenu({
                     </div>
 
                     <div className="space-y-3 border-t border-white/8 pt-4">
-                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Outline & shadow</div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Fill, outline & glow</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {(["solid", "gradient"] as const).map(fill => <button key={fill} onClick={() => setTextFillType(fill)} className={`h-8 rounded-lg border text-[9px] capitalize ${textFillType === fill ? "border-fuchsia-400/40 bg-fuchsia-500/15 text-fuchsia-200" : "border-white/8 bg-white/3 text-white/45"}`}>{fill}</button>)}
+                        </div>
+                        {textFillType === "gradient" && <div className="space-y-2 rounded-lg border border-white/8 bg-white/2 p-2">
+                            <label className="flex items-center gap-2 text-[10px] text-white/50">End color <input type="color" value={textGradientColor} onChange={(e) => setTextGradientColor(e.target.value)} className="ml-auto h-6 w-10 bg-transparent" /></label>
+                            <SliderControl icon="mdi:angle-acute" label="Gradient angle" value={textGradientAngle} onChange={setTextGradientAngle} min={0} max={360} />
+                        </div>}
+                        <div className="grid grid-cols-3 gap-2">
                             <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 p-2 text-[10px] text-white/50">Outline <input type="color" value={textStrokeColor} onChange={(e) => setTextStrokeColor(e.target.value)} className="ml-auto h-6 w-8 bg-transparent" /></label>
                             <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 p-2 text-[10px] text-white/50">Shadow <input type="color" value={textShadowColor} onChange={(e) => setTextShadowColor(e.target.value)} className="ml-auto h-6 w-8 bg-transparent" /></label>
+                            <label className="flex items-center gap-1 rounded-lg border border-white/8 bg-white/3 p-2 text-[10px] text-white/50">Glow <input type="color" value={textGlowColor} onChange={(e) => setTextGlowColor(e.target.value)} className="ml-auto h-6 w-8 bg-transparent" /></label>
                         </div>
                         <SliderControl icon="mdi:format-text-variant-outline" label="Outline width" value={textStrokeWidth} onChange={setTextStrokeWidth} min={0} max={12} />
+                        <SliderControl icon="mdi:lightbulb-on-outline" label="Glow size" value={textGlowBlur} onChange={setTextGlowBlur} min={0} max={80} />
                         <SliderControl icon="mdi:blur" label="Shadow blur" value={textShadowBlur} onChange={setTextShadowBlur} min={0} max={60} />
                         <SliderControl icon="mdi:arrow-left-right" label="Shadow horizontal" value={textShadowOffsetX} onChange={setTextShadowOffsetX} min={-40} max={40} />
                         <SliderControl icon="mdi:arrow-up-down" label="Shadow vertical" value={textShadowOffsetY} onChange={setTextShadowOffsetY} min={-40} max={40} />
@@ -655,13 +739,43 @@ export function ElementsMenu({
                     </div>
 
                     <div className="space-y-3 border-t border-white/8 pt-4">
-                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Animation</div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                            {(["none", "fade", "slide-up", "slide-down", "slide-left", "slide-right", "scale", "pop", "typewriter"] as TextAnimationType[]).map(animation => <button key={animation} onClick={() => setTextAnimationType(animation)} className={`min-h-9 px-2 squircle-element border text-[9px] capitalize ${textAnimationType === animation ? "bg-violet-500/20 border-violet-400/40 text-violet-300" : "bg-white/3 border-white/8 text-white/45"}`}>{animation.replace("-", " ")}</button>)}
+                        <div className="flex items-center justify-between">
+                            <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Entrance animation</div>
+                            <span className="text-[8px] text-violet-300/60">Timed from layer start</span>
                         </div>
-                        <SliderControl icon="mdi:timer-outline" label="Duration" value={Math.round(textAnimationDuration * 100)} onChange={(value) => setTextAnimationDuration(value / 100)} min={10} max={500} />
-                        <SliderControl icon="mdi:timer-sand" label="Delay" value={Math.round(textAnimationDelay * 100)} onChange={(value) => setTextAnimationDelay(value / 100)} min={0} max={1000} />
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(["none", "fade", "slide-up", "slide-down", "slide-left", "slide-right", "scale", "pop", "typewriter", "blur", "rotate"] as TextAnimationType[]).map(animation => <button key={animation} onClick={() => setTextAnimationType(animation)} className={`min-h-9 px-2 squircle-element border text-[9px] capitalize ${textAnimationType === animation ? "bg-violet-500/20 border-violet-400/40 text-violet-300" : "bg-white/3 border-white/8 text-white/45"}`}>{animation.replace("-", " ")}</button>)}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <label className="text-[9px] uppercase tracking-wider text-white/40">Duration (sec)<input type="number" min={0} max={30} step={0.05} value={textAnimationDuration} onChange={(e) => setTextAnimationDuration(Math.max(0, Math.min(30, Number(e.target.value))))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                            <label className="text-[9px] uppercase tracking-wider text-white/40">Start delay (sec)<input type="number" min={0} max={60} step={0.05} value={textAnimationDelay} onChange={(e) => setTextAnimationDelay(Math.max(0, Math.min(60, Number(e.target.value))))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                        </div>
+                        <Select value={textAnimationEasing} onValueChange={(value) => setTextAnimationEasing(value as TextAnimationEasing)}>
+                            <SelectTrigger className="w-full border-white/8 bg-white/4 text-xs text-white/70"><SelectValue /></SelectTrigger>
+                            <SelectContent className="bg-[#1a1a1e] border-white/10">{(["linear", "ease-in", "ease-out", "ease-in-out", "back", "bounce"] as TextAnimationEasing[]).map(easing => <SelectItem key={easing} value={easing}>{easing}</SelectItem>)}</SelectContent>
+                        </Select>
                         <SliderControl icon="mdi:motion" label="Motion amount" value={textAnimationIntensity} onChange={setTextAnimationIntensity} min={10} max={200} />
+                    </div>
+
+                    <div className="space-y-3 border-t border-white/8 pt-4">
+                        <div className="flex items-center justify-between">
+                            <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Exit animation</div>
+                            <span className="text-[8px] text-rose-300/60">Ends at layer end</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(["none", "fade", "slide-up", "slide-down", "slide-left", "slide-right", "scale", "pop", "typewriter", "blur", "rotate"] as TextAnimationType[]).map(animation => <button key={animation} onClick={() => setTextExitAnimationType(animation)} className={`min-h-9 px-2 squircle-element border text-[9px] capitalize ${textExitAnimationType === animation ? "bg-rose-500/20 border-rose-400/40 text-rose-300" : "bg-white/3 border-white/8 text-white/45"}`}>{animation.replace("-", " ")}</button>)}
+                        </div>
+                        <label className="text-[9px] uppercase tracking-wider text-white/40">Duration (sec)<input type="number" min={0} max={30} step={0.05} value={textExitAnimationDuration} onChange={(e) => setTextExitAnimationDuration(Math.max(0, Math.min(30, Number(e.target.value))))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                        <Select value={textExitAnimationEasing} onValueChange={(value) => setTextExitAnimationEasing(value as TextAnimationEasing)}>
+                            <SelectTrigger className="w-full border-white/8 bg-white/4 text-xs text-white/70"><SelectValue /></SelectTrigger>
+                            <SelectContent className="bg-[#1a1a1e] border-white/10">{(["linear", "ease-in", "ease-out", "ease-in-out", "back", "bounce"] as TextAnimationEasing[]).map(easing => <SelectItem key={easing} value={easing}>{easing}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <SliderControl icon="mdi:motion" label="Exit motion amount" value={textExitAnimationIntensity} onChange={setTextExitAnimationIntensity} min={10} max={200} />
+                        {textEndTime <= 0 && textExitAnimationType !== "none" && <p className="rounded-lg border border-amber-400/15 bg-amber-500/5 p-2 text-[9px] leading-relaxed text-amber-200/70">Set a layer end time below so the exit animation has a point to finish on.</p>}
+                    </div>
+
+                    <div className="space-y-3 border-t border-white/8 pt-4">
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Layer timing</div>
                         <div className="grid grid-cols-2 gap-2">
                             <label className="text-[9px] uppercase tracking-wider text-white/40">Start (sec)<input type="number" min={0} step={0.1} value={textStartTime} onChange={(e) => setTextStartTime(Math.max(0, Number(e.target.value)))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
                             <label className="text-[9px] uppercase tracking-wider text-white/40">End (0 = full)<input type="number" min={0} step={0.1} value={textEndTime} onChange={(e) => setTextEndTime(Math.max(0, Number(e.target.value)))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>

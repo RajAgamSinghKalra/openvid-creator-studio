@@ -16,6 +16,7 @@ import { useVideoExport } from "@/hooks/useVideoExport";
 import { useVideoThumbnails, type VideoThumbnail } from "@/hooks/useVideoThumbnails";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { clearAllThumbnailCache } from "@/lib/thumbnail-cache";
+import { loadAndRegisterCustomFonts } from "@/lib/custom-fonts";
 import { addVideoToSessionLibrary, addVideoToLibraryWithMetadata, getLibraryVideo, findExistingVideo, persistLibraryVideos } from "@/lib/videos-library";
 import { calculateTotalDuration, findNextClipPosition, getClipAtTime, getClipPlaybackRate, getClipTimelineDuration, splitClipAtTime, timelineToClipTime as mapTimelineToClipTime, type VideoTrackClip } from "@/types/video-track.types";
 import type { ExportQuality, BackgroundTab, VideoCanvasHandle, BackgroundColorConfig, BackgroundVideoItem, AspectRatio, CropArea, ZoomFragment, AudioTrack, ImageExportFormat } from "@/types";
@@ -1994,6 +1995,9 @@ export default function Editor() {
 
     const { exportVideo, cancelExport, exportProgress } = useVideoExport(videoRef, canvasRef);
     const { uploadVideo, loadUploadedVideo, isUploading } = useVideoUpload();
+    useEffect(() => {
+        void loadAndRegisterCustomFonts().catch(error => console.warn("Could not restore custom fonts:", error));
+    }, []);
     const batchImportRef = useRef(false);
     const [isBatchImporting, setIsBatchImporting] = useState(false);
     const isVideoImporting = isUploading || isBatchImporting;

@@ -3,7 +3,7 @@ import { RotationHandleIcon } from "@/components/ui/RotationHandleIcon";
 import { Corner, VIDEO_Z_INDEX, getNearestCorner, getCornerStyle } from "@/lib";
 import { CanvasElement, SvgElement, ImageElement, TextElement } from "@/types/canvas-elements.types";
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { getTextAnimationState, getTextBackgroundCss, getTextFontFamilyCss } from "@/lib/text-rendering";
+import { getTextAnimationState, getTextBackgroundCss, getTextFontFamilyCss, getTextFontWeight } from "@/lib/text-rendering";
 
 type ResizeDirection = { x: -1 | 0 | 1; y: -1 | 0 | 1; cursor: string; position: React.CSSProperties };
 
@@ -141,7 +141,7 @@ function InlineTextEditor({
             style={{
                 fontSize: `${fontSize}px`,
                 fontFamily: getTextFontFamilyCss(element.fontFamily),
-                fontWeight: element.fontWeight === "normal" ? 400 : element.fontWeight === "medium" ? 500 : 700,
+                fontWeight: getTextFontWeight(element.fontWeight),
                 fontStyle: element.fontStyle ?? "normal",
                 textDecoration: element.textDecoration ?? "none",
                 textAlign: element.textAlign ?? "center",
@@ -544,7 +544,8 @@ export function CanvasElementsLayer({
                                 top: `${element.y}%`,
                                 width: element.width > 0 ? `${wPx}px` : undefined,
                                 height: element.height > 0 ? `${hPx}px` : undefined,
-                                transform: `translate(-50%, -50%) translate(${animationState.translateX * (refSize / 1080)}px, ${animationState.translateY * (refSize / 1080)}px) rotate(${element.rotation}deg) scale(${animationState.scale})`,
+                                transform: `translate(-50%, -50%) translate(${animationState.translateX * (refSize / 1080)}px, ${animationState.translateY * (refSize / 1080)}px) rotate(${element.rotation + animationState.rotation}deg) scale(${animationState.scale})`,
+                                filter: animationState.blur > 0 ? `blur(${animationState.blur * (refSize / 1080)}px)` : undefined,
                                 zIndex: isEditing ? 9999 : element.zIndex,
                                 transition: isDraggingElement ? 'none' : 'transform 0.1s ease-out',
                                 pointerEvents: isEditing ? 'auto' : 'none',
@@ -564,12 +565,11 @@ export function CanvasElementsLayer({
                                     style={{
                                         fontSize: refSize > 0 ? `${element.fontSize * (refSize / 1080)}px` : `${element.fontSize}px`,
                                         fontFamily: getTextFontFamilyCss(element.fontFamily),
-                                        fontWeight: element.fontWeight === 'normal' ? 400 : element.fontWeight === 'medium' ? 500 : 700,
+                                        fontWeight: getTextFontWeight(element.fontWeight),
                                         fontStyle: element.fontStyle ?? 'normal',
                                         textDecoration: element.textDecoration ?? 'none',
                                         textTransform: element.textTransform ?? 'none',
                                         textAlign: element.textAlign ?? 'center',
-                                        color: element.color,
                                         pointerEvents: 'none',
                                         width: element.width > 0 ? "100%" : undefined,
                                         height: element.height > 0 ? "100%" : undefined,
@@ -585,11 +585,19 @@ export function CanvasElementsLayer({
                                         padding: `${scaledPadding}px`,
                                         borderRadius: `${(element.backgroundRadius ?? 0) * (refSize / 1080)}px`,
                                         backgroundColor: getTextBackgroundCss(element),
-                                        WebkitTextStroke: (element.strokeWidth ?? 0) > 0 ? `${(element.strokeWidth ?? 0) * (refSize / 1080)}px ${element.strokeColor ?? '#000000'}` : undefined,
-                                        textShadow: (element.shadowBlur ?? 0) > 0 ? `${(element.shadowOffsetX ?? 0) * (refSize / 1080)}px ${(element.shadowOffsetY ?? 0) * (refSize / 1080)}px ${(element.shadowBlur ?? 0) * (refSize / 1080)}px ${element.shadowColor ?? '#000000'}` : undefined,
                                     }}
                                 >
-                                    {animationState.content}
+                                    <span style={{
+                                        color: element.fillType === "gradient" ? "transparent" : element.color,
+                                        backgroundImage: element.fillType === "gradient" ? `linear-gradient(${element.gradientAngle ?? 0}deg, ${element.color}, ${element.gradientColor ?? "#A855F7"})` : undefined,
+                                        backgroundClip: element.fillType === "gradient" ? "text" : undefined,
+                                        WebkitBackgroundClip: element.fillType === "gradient" ? "text" : undefined,
+                                        WebkitTextStroke: (element.strokeWidth ?? 0) > 0 ? `${(element.strokeWidth ?? 0) * (refSize / 1080)}px ${element.strokeColor ?? '#000000'}` : undefined,
+                                        textShadow: [
+                                            (element.glowBlur ?? 0) > 0 ? `0 0 ${(element.glowBlur ?? 0) * (refSize / 1080)}px ${element.glowColor ?? element.color}` : "",
+                                            (element.shadowBlur ?? 0) > 0 ? `${(element.shadowOffsetX ?? 0) * (refSize / 1080)}px ${(element.shadowOffsetY ?? 0) * (refSize / 1080)}px ${(element.shadowBlur ?? 0) * (refSize / 1080)}px ${element.shadowColor ?? '#000000'}` : "",
+                                        ].filter(Boolean).join(", ") || undefined,
+                                    }}>{animationState.content}</span>
                                 </div>
                             )}
                         </div>

@@ -67,6 +67,9 @@ The list below covers the feature-level changes made in this fork.
 - Added text animations: fade, slide from four directions, scale, pop, and typewriter.
 - Added animation duration, delay, and intensity controls.
 - Added a practical local font set including Inter, Roboto, Poppins, Montserrat, DM Sans, Arial, Georgia, Times New Roman, Trebuchet MS, Verdana, Courier New, and Impact.
+- Added local TTF, OTF, WOFF, and WOFF2 font import with browser persistence and automatic restoration for preview, projects, and export.
+- Expanded text weights from Light through Black and added solid/gradient fills, adjustable gradient angle, and an independent glow effect alongside outline and shadow.
+- Added blur and rotate text animations, six easing modes, independently configurable entrance and exit effects, exact animation durations, entrance delay, motion intensity, and layer start/end timing.
 - Added canvas-element timeline clips with start/end trimming.
 - Rendered text and element styling consistently in both preview and final export.
 - Improved canvas element selection, layering, locking, visibility, grouping, duplication, and deletion workflows.

@@ -28,13 +28,20 @@ export interface ImageElement extends CanvasElementBase {
     imagePath: string;
 }
 
-export type TextAnimationType = "none" | "fade" | "slide-up" | "slide-down" | "slide-left" | "slide-right" | "scale" | "pop" | "typewriter";
+export type TextAnimationType = "none" | "fade" | "slide-up" | "slide-down" | "slide-left" | "slide-right" | "scale" | "pop" | "typewriter" | "blur" | "rotate";
+export type TextAnimationEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "back" | "bounce";
+export type TextFontWeight = "light" | "normal" | "medium" | "semibold" | "bold" | "black";
 
 export interface TextAnimationConfig {
     type: TextAnimationType;
     duration: number;
     delay: number;
     intensity: number;
+    easing?: TextAnimationEasing;
+    outType?: TextAnimationType;
+    outDuration?: number;
+    outIntensity?: number;
+    outEasing?: TextAnimationEasing;
 }
 
 export interface TextElement extends CanvasElementBase {
@@ -42,7 +49,7 @@ export interface TextElement extends CanvasElementBase {
     content: string;
     fontSize: number;
     fontFamily: string;
-    fontWeight: "normal" | "medium" | "bold";
+    fontWeight: TextFontWeight;
     color: string;
     fontStyle?: "normal" | "italic";
     textDecoration?: "none" | "underline" | "line-through";
@@ -60,6 +67,11 @@ export interface TextElement extends CanvasElementBase {
     shadowBlur?: number;
     shadowOffsetX?: number;
     shadowOffsetY?: number;
+    fillType?: "solid" | "gradient";
+    gradientColor?: string;
+    gradientAngle?: number;
+    glowColor?: string;
+    glowBlur?: number;
     startTime?: number;
     endTime?: number;
     animation?: TextAnimationConfig;
@@ -106,9 +118,12 @@ export const TEXT_TEMPLATES: TextTemplate[] = [
 ];
 
 export const FONT_WEIGHTS = [
+    { key: "light", label: "Light" },
     { key: "normal", label: "Regular" },
     { key: "medium", label: "Medium" },
+    { key: "semibold", label: "Semi bold" },
     { key: "bold", label: "Bold" },
+    { key: "black", label: "Black" },
 ] as const;
 
 export interface UploadedImage { id: string; name: string; dataUrl: string; uploadedAt: number; }
