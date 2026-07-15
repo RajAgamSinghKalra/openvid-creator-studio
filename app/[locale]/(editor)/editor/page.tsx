@@ -29,7 +29,7 @@ import type { CameraConfig } from "@/types/camera.types";
 import type { Preview3DConfig, ImageMaskConfig } from "@/types/photo.types";
 import { DEFAULT_MASK_CONFIG, PREVIEW_CONFIGS } from "@/types/photo.types";
 import { MOCKUPS } from "@/lib/mockup-data";
-import { gradientToCss, generateDefaultZoomFragments, createZoomFragment, ASPECT_RATIO_DIMENSIONS } from "@/types";
+import { gradientToCss, createZoomFragment, ASPECT_RATIO_DIMENSIONS } from "@/types";
 import { ToolsSidebar } from "@/app/components/ui/editor/ToolsSidebar";
 import { MobileToolsMenu } from "@/app/components/ui/editor/MobileToolsMenu";
 import { MobileControlPanel } from "@/app/components/ui/editor/MobileControlPanel";
@@ -2323,8 +2323,7 @@ export default function Editor() {
             setVideoClips([newClip]);
             setSelectedVideoClipId(newClip.id);
 
-            const defaultFragments = generateDefaultZoomFragments(uploadedData.duration);
-            setZoomFragments(defaultFragments);
+            setZoomFragments([]);
 
             setCurrentTime(0);
             setIsPlaying(false);
@@ -2403,9 +2402,6 @@ export default function Editor() {
                         URL.revokeObjectURL(metadataUrl);
                     };
                     video.src = metadataUrl;
-
-                    const defaultFragments = generateDefaultZoomFragments(duration);
-                    setZoomFragments(defaultFragments);
 
                     setCurrentTime(0);
                     setIsPlaying(false);
@@ -2713,9 +2709,6 @@ export default function Editor() {
                         }
                         setVideoDuration(videoToLoad.duration);
                         setTrimRange({ start: 0, end: videoToLoad.duration });
-                        const defaultFragments = generateDefaultZoomFragments(videoToLoad.duration);
-                        setZoomFragments(defaultFragments);
-
                         if ('aspectRatio' in videoToLoad) {
                             setAspectRatio(videoToLoad.aspectRatio || "auto");
                             if (videoToLoad.width && videoToLoad.height) {

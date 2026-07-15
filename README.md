@@ -75,6 +75,9 @@ The list below covers the feature-level changes made in this fork.
 - Made the timeline scrubbable even when the project has no video or other content yet.
 - Added a vertically resizable timeline so text, mockup, zoom, audio, and element tracks remain accessible.
 - Added dedicated timeline rows for video clips, zoom effects, mockups, and canvas elements.
+- Added draggable/clickable zoom focal points so a zoom can center on different areas of the frame while keeping center zoom as the default.
+- Bounded zoom focal points and movement paths so preview and export never reveal empty space beyond the composition edges.
+- Stopped new clips and restored local media from automatically creating two unrequested zoom effects.
 - Added visible text-layer clips to the timeline.
 - Fixed text and mockups being visible outside their timeline ranges.
 - Added clip splitting/cutting at the playhead.

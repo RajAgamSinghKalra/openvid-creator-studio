@@ -8,6 +8,7 @@ import type { ZoomFragmentEditorProps } from "@/types/zoom.types";
 import { formatZoomTime, zoomLevelToFactor, speedToTransitionMs, calculateHoldDuration } from "@/types/zoom.types";
 import { TooltipAction } from "@/components/ui/tooltip-action";
 import { DetailPageHeader } from "@/components/ui/DetailHeaderMenu";
+import { clampZoomFocus, getZoomFocusBounds } from "@/lib/zoom-transform";
 
 export function ZoomFragmentEditor({
     fragment, videoUrl, videoThumbnail, currentTime = 0,
@@ -27,6 +28,10 @@ export function ZoomFragmentEditor({
     const movementEndX = fragment.movementEndX ?? fragment.focusX;
     const movementEndY = fragment.movementEndY ?? fragment.focusY;
     const movementEnabled = fragment.movementEnabled ?? false;
+    const zoomScale = zoomLevelToFactor(fragment.zoomLevel);
+    const focusBounds = getZoomFocusBounds(zoomScale);
+    const startFocus = clampZoomFocus(fragment.focusX, fragment.focusY, zoomScale);
+    const endFocus = clampZoomFocus(movementEndX, movementEndY, zoomScale);
 
     const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>, point: 'start' | 'end') => {
         e.preventDefault();
@@ -36,10 +41,11 @@ export function ZoomFragmentEditor({
         const move = (ev: PointerEvent) => {
             if (!focusPreviewRef.current) return;
             const rect = focusPreviewRef.current.getBoundingClientRect();
-            const x = Math.max(0, Math.min(100, ((ev.clientX - rect.left) / rect.width) * 100));
-            const y = Math.max(0, Math.min(100, ((ev.clientY - rect.top) / rect.height) * 100));
-            if (point === 'start') { onUpdate({ focusX: x, focusY: y }); }
-            else { onUpdate({ movementEndX: x, movementEndY: y }); }
+            const x = ((ev.clientX - rect.left) / rect.width) * 100;
+            const y = ((ev.clientY - rect.top) / rect.height) * 100;
+            const focus = clampZoomFocus(x, y, zoomScale);
+            if (point === 'start') { onUpdate({ focusX: focus.x, focusY: focus.y }); }
+            else { onUpdate({ movementEndX: focus.x, movementEndY: focus.y }); }
         };
         const up = () => {
             window.removeEventListener("pointermove", move);
@@ -53,18 +59,18 @@ export function ZoomFragmentEditor({
         if ((e.target as HTMLElement).closest('[data-drag-handle]')) return;
         if (!focusPreviewRef.current) return;
         const rect = focusPreviewRef.current.getBoundingClientRect();
-        const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-        const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-        if (movementEnabled && editingPoint === 'end') { onUpdate({ movementEndX: x, movementEndY: y }); }
-        else { onUpdate({ focusX: x, focusY: y }); }
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        const focus = clampZoomFocus(x, y, zoomScale);
+        if (movementEnabled && editingPoint === 'end') { onUpdate({ movementEndX: focus.x, movementEndY: focus.y }); }
+        else { onUpdate({ focusX: focus.x, focusY: focus.y }); }
     };
 
     const handleToggleMovement = () => {
         if (!movementEnabled) {
             const holdDuration = calculateHoldDuration(fragment);
-            const endX = Math.min(85, Math.max(15, fragment.focusX + 25));
-            const endY = Math.min(85, Math.max(15, fragment.focusY + 25));
-            onUpdate({ movementEnabled: true, movementEndX: endX, movementEndY: endY, movementStartOffset: 0, movementEndOffset: holdDuration });
+            const endFocusPoint = clampZoomFocus(startFocus.x + 25, startFocus.y + 25, zoomScale);
+            onUpdate({ movementEnabled: true, movementEndX: endFocusPoint.x, movementEndY: endFocusPoint.y, movementStartOffset: 0, movementEndOffset: holdDuration });
         } else {
             onUpdate({ movementEnabled: false });
         }
@@ -98,6 +104,15 @@ export function ZoomFragmentEditor({
                     <div className="flex items-center gap-2 text-xs mb-2 text-white/60">
                         <Icon icon="material-symbols:center-focus-strong-outline" width="16" />
                         <span>{movementEnabled ? t("focusPoints.multiple") : t("focusPoints.single")}</span>
+                        {!movementEnabled && (
+                            <button
+                                type="button"
+                                onClick={() => onUpdate({ focusX: 50, focusY: 50 })}
+                                className="ml-auto rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/50 hover:bg-white/10 hover:text-white"
+                            >
+                                Center
+                            </button>
+                        )}
                         {movementEnabled && (
                             <div className="ml-auto flex gap-1">
                                 <button
@@ -128,18 +143,28 @@ export function ZoomFragmentEditor({
                         ) : null}
 
                         <div
+                            className="absolute border border-white/10 pointer-events-none"
+                            style={{
+                                left: `${focusBounds.min}%`,
+                                top: `${focusBounds.min}%`,
+                                width: `${focusBounds.max - focusBounds.min}%`,
+                                height: `${focusBounds.max - focusBounds.min}%`,
+                            }}
+                        />
+
+                        <div
                             className="absolute border border-dashed border-blue-500/50 bg-linear-to-b from-blue-500/20 to-transparent squircle-element pointer-events-none transition-opacity duration-200"
-                            style={{ width: `${100 / zoomLevelToFactor(fragment.zoomLevel)}%`, height: `${100 / zoomLevelToFactor(fragment.zoomLevel)}%`, left: `${fragment.focusX}%`, top: `${fragment.focusY}%`, transform: 'translate(-50%, -50%)', opacity: movementEnabled && editingPoint === 'end' ? 0.4 : 1, willChange: "left, top" }}
+                            style={{ width: `${100 / zoomScale}%`, height: `${100 / zoomScale}%`, left: `${startFocus.x}%`, top: `${startFocus.y}%`, transform: 'translate(-50%, -50%)', opacity: movementEnabled && editingPoint === 'end' ? 0.4 : 1, willChange: "left, top" }}
                         />
 
                         {movementEnabled && (() => {
-                            const dx = movementEndX - fragment.focusX;
-                            const dy = movementEndY - fragment.focusY;
+                            const dx = endFocus.x - startFocus.x;
+                            const dy = endFocus.y - startFocus.y;
                             const dist = Math.sqrt(dx * dx + dy * dy);
                             const radius = dist > 0 ? 5.5 : 0;
                             const ratio = dist > 0 ? (dist - radius) / dist : 0;
-                            const x2 = fragment.focusX + dx * ratio;
-                            const y2 = fragment.focusY + dy * ratio;
+                            const x2 = startFocus.x + dx * ratio;
+                            const y2 = startFocus.y + dy * ratio;
                             return (
                                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5, willChange: "contents" }}>
                                     <defs>
@@ -147,7 +172,7 @@ export function ZoomFragmentEditor({
                                             <polygon points="0 0, 10 3.5, 0 7" fill="rgba(16, 185, 129, 0.7)" />
                                         </marker>
                                     </defs>
-                                    <line x1={`${fragment.focusX}%`} y1={`${fragment.focusY}%`} x2={`${x2}%`} y2={`${y2}%`} stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="6 4" markerEnd="url(#arrowhead)" />
+                                    <line x1={`${startFocus.x}%`} y1={`${startFocus.y}%`} x2={`${x2}%`} y2={`${y2}%`} stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="6 4" markerEnd="url(#arrowhead)" />
                                 </svg>
                             );
                         })()}
@@ -155,18 +180,18 @@ export function ZoomFragmentEditor({
                         {movementEnabled && (
                             <div
                                 className="absolute border border-dashed border-emerald-500/50 bg-linear-to-b from-emerald-500/20 to-transparent squircle-element pointer-events-none transition-opacity duration-200"
-                                style={{ width: `${100 / zoomLevelToFactor(fragment.zoomLevel)}%`, height: `${100 / zoomLevelToFactor(fragment.zoomLevel)}%`, left: `${movementEndX}%`, top: `${movementEndY}%`, transform: 'translate(-50%, -50%)', opacity: editingPoint === 'start' ? 0.4 : 1, willChange: "left, top" }}
+                                style={{ width: `${100 / zoomScale}%`, height: `${100 / zoomScale}%`, left: `${endFocus.x}%`, top: `${endFocus.y}%`, transform: 'translate(-50%, -50%)', opacity: editingPoint === 'start' ? 0.4 : 1, willChange: "left, top" }}
                             />
                         )}
 
-                        <div data-drag-handle className={`absolute z-10 cursor-grab active:cursor-grabbing touch-none transition-[opacity,transform] duration-150 ${movementEnabled && editingPoint === 'end' ? 'opacity-60 scale-90' : ''}`} style={{ left: `${fragment.focusX}%`, top: `${fragment.focusY}%`, transform: "translate(-50%, -50%)", willChange: "left, top" }} onPointerDown={(e) => handlePointerDown(e, 'start')}>
+                        <div data-drag-handle className={`absolute z-10 cursor-grab active:cursor-grabbing touch-none transition-[opacity,transform] duration-150 ${movementEnabled && editingPoint === 'end' ? 'opacity-60 scale-90' : ''}`} style={{ left: `${startFocus.x}%`, top: `${startFocus.y}%`, transform: "translate(-50%, -50%)", willChange: "left, top" }} onPointerDown={(e) => handlePointerDown(e, 'start')}>
                             <div className="size-8 rounded-full bg-blue-500 shadow-lg border-2 border-white/80 hover:scale-110 transition-transform flex items-center justify-center">
                                 <span className="text-[8px] font-bold text-white">A</span>
                             </div>
                         </div>
 
                         {movementEnabled && (
-                            <div data-drag-handle className={`absolute z-10 cursor-grab active:cursor-grabbing touch-none transition-[opacity,transform] duration-150 ${editingPoint === 'start' ? 'opacity-60 scale-90' : ''}`} style={{ left: `${movementEndX}%`, top: `${movementEndY}%`, transform: "translate(-50%, -50%)", willChange: "left, top" }} onPointerDown={(e) => handlePointerDown(e, 'end')}>
+                            <div data-drag-handle className={`absolute z-10 cursor-grab active:cursor-grabbing touch-none transition-[opacity,transform] duration-150 ${editingPoint === 'start' ? 'opacity-60 scale-90' : ''}`} style={{ left: `${endFocus.x}%`, top: `${endFocus.y}%`, transform: "translate(-50%, -50%)", willChange: "left, top" }} onPointerDown={(e) => handlePointerDown(e, 'end')}>
                                 <div className="size-8 rounded-full bg-emerald-500 shadow-lg border-2 border-white/80 hover:scale-110 transition-transform flex items-center justify-center">
                                     <span className="text-[8px] font-bold text-white">B</span>
                                 </div>
@@ -359,7 +384,25 @@ export function ZoomFragmentEditor({
                     )}
                 </div>
 
-                <SliderControl icon="mdi:magnify-plus-outline" label={t("sliders.zoomLevel")} value={fragment.zoomLevel} min={1} max={10} step={0.1} onChange={(value) => onUpdate({ zoomLevel: value })} />
+                <SliderControl
+                    icon="mdi:magnify-plus-outline"
+                    label={t("sliders.zoomLevel")}
+                    value={fragment.zoomLevel}
+                    min={1}
+                    max={10}
+                    step={0.1}
+                    onChange={(value) => {
+                        const nextScale = zoomLevelToFactor(value);
+                        const nextStart = clampZoomFocus(fragment.focusX, fragment.focusY, nextScale);
+                        const nextEnd = clampZoomFocus(movementEndX, movementEndY, nextScale);
+                        onUpdate({
+                            zoomLevel: value,
+                            focusX: nextStart.x,
+                            focusY: nextStart.y,
+                            ...(movementEnabled ? { movementEndX: nextEnd.x, movementEndY: nextEnd.y } : {}),
+                        });
+                    }}
+                />
                 <SliderControl icon="mdi:speedometer" label={t("sliders.transitionSpeed")} value={fragment.speed} min={1} max={10} step={0.1} onChange={(value) => onUpdate({ speed: value })} />
 
                 <div className="h-px bg-white/10" />

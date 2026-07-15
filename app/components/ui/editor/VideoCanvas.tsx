@@ -36,6 +36,7 @@ import { RotationGuideLine } from "@/components/ui/RotationGuideLine";
 import { drawTextElement } from "@/lib/text-rendering";
 import { getMockupAnimationState, getMockupTransformState, type MockupTransformKeyframe } from "@/types/mockup-animation.types";
 import { seekVideoToTime } from "@/lib/video.utils";
+import { getBoundedZoomTransform } from "@/lib/zoom-transform";
 
 export type { VideoCanvasHandle, VideoCanvasProps };
 
@@ -317,8 +318,13 @@ function VideoCanvasInner({
 
         // Calculate 3-phase state
         const phaseState = calculateZoomPhaseState(activeZoomFragment, currentTime);
-        const translateX = 50 - phaseState.focusX;
-        const translateY = 50 - phaseState.focusY;
+        const targetScale = zoomLevelToFactor(activeZoomFragment.zoomLevel);
+        const boundedTransform = getBoundedZoomTransform(
+            phaseState.scale,
+            phaseState.focusX,
+            phaseState.focusY,
+            targetScale,
+        );
 
         // During hold phase with movement, reduce transition to avoid jarring
         const isMoving = activeZoomFragment.movementEnabled && phaseState.phase === 'hold';
@@ -326,8 +332,8 @@ function VideoCanvasInner({
 
         return {
             scale: phaseState.scale,
-            translateX,
-            translateY,
+            translateX: boundedTransform.translateXPercent,
+            translateY: boundedTransform.translateYPercent,
             transitionMs,
             rotateX: phaseState.rotateX,
             rotateY: phaseState.rotateY,
@@ -1736,12 +1742,6 @@ function VideoCanvasInner({
         const has3DEffect = zoomState.perspective > 0 && (zoomState.rotateX !== 0 || zoomState.rotateY !== 0);
         const hasZoom = zoomState.scale !== 1;
 
-        let focusPxX = 0, focusPxY = 0;
-        if (hasZoom) {
-            focusPxX = (zoomState.focusX / 100) * canvasWidth;
-            focusPxY = (zoomState.focusY / 100) * canvasHeight;
-        }
-
         // Find target scale from the active/previous zoom fragment.
         // We need S_target to compute the pivot point that gives identity at S=1
         // and pins the focus to the canvas center at S=S_target.
@@ -1752,17 +1752,21 @@ function VideoCanvasInner({
             .sort((a, b) => b.endTime - a.endTime)[0];
         const targetScale = activeFragment ? zoomLevelToFactor(activeFragment.zoomLevel) : zoomState.scale;
 
-        let pivotX = zoomCenterX, pivotY = zoomCenterY;
-        if (hasZoom && targetScale > 1) {
-            pivotX = (targetScale * focusPxX - zoomCenterX) / (targetScale - 1);
-            pivotY = (targetScale * focusPxY - zoomCenterY) / (targetScale - 1);
-        }
+        const boundedZoom = getBoundedZoomTransform(
+            zoomState.scale,
+            zoomState.focusX,
+            zoomState.focusY,
+            targetScale,
+        );
+        const zoomTranslateX = boundedZoom.translateXPercent / 100 * canvasWidth;
+        const zoomTranslateY = boundedZoom.translateYPercent / 100 * canvasHeight;
+        const pivotX = boundedZoom.pivotXPercent / 100 * canvasWidth;
+        const pivotY = boundedZoom.pivotYPercent / 100 * canvasHeight;
 
         const applyVideoZoom = (c: CanvasRenderingContext2D) => {
             if (hasZoom) {
-                c.translate(pivotX, pivotY);
+                c.translate(zoomTranslateX, zoomTranslateY);
                 c.scale(zoomState.scale, zoomState.scale);
-                c.translate(-pivotX, -pivotY);
             }
         };
 
@@ -2404,7 +2408,8 @@ function VideoCanvasInner({
                                     style={{
                                         transform: mediaType === "image" && imageTransform && apply3DToBackground
                                             ? `rotateX(${imageTransform.rotateX}deg) rotateY(${imageTransform.rotateY}deg) rotateZ(${imageTransform.rotateZ}deg) scale(${imageTransform.scale * imageZoomScale}) translateY(${imageTransform.translateY}%)`
-                                            : `scale(${zoomTransform.scale}) translate(${zoomTransform.translateX}%, ${zoomTransform.translateY}%)`,
+                                            : `translate(${zoomTransform.translateX}%, ${zoomTransform.translateY}%) scale(${zoomTransform.scale})`,
+                                        transformOrigin: mediaType === "image" && apply3DToBackground ? "center center" : "top left",
                                         perspective: !(mediaType === "image" && apply3DToBackground) && zoomTransform.perspective > 0
                                             ? `${(zoomTransform.perspective / 10.8).toFixed(1)}cqh` : 'none',
                                         transformStyle: mediaType === "image" && apply3DToBackground ? 'preserve-3d' : undefined,

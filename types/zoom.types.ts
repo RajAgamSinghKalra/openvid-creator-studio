@@ -222,32 +222,6 @@ export function createZoomFragment(
     };
 }
 
-// Helper to generate default fragments when a video loads
-export function generateDefaultZoomFragments(
-    videoDuration: number
-): ZoomFragment[] {
-    if (videoDuration <= 0) return [];
-
-    const fragmentDuration = 2;
-    const spacing = videoDuration / 3;
-
-    const fragments: ZoomFragment[] = [];
-
-    const start1 = Math.max(0, spacing * 0.5);
-    fragments.push(createZoomFragment(
-        start1,
-        Math.min(start1 + fragmentDuration, videoDuration)
-    ));
-
-    const start2 = Math.max(0, spacing * 2);
-    fragments.push(createZoomFragment(
-        start2,
-        Math.min(start2 + fragmentDuration, videoDuration)
-    ));
-
-    return fragments;
-}
-
 // Convert zoomLevel (1-10) to actual zoom factor
 export function zoomLevelToFactor(level: number): number {
     const minZoom = 1.2;
