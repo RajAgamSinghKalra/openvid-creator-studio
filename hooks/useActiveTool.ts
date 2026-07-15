@@ -11,7 +11,7 @@ const VALID_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
     "zoom",
     "mockup",
     "cursor",
-    "videos",
+    "video",
     "camera",
     "history",
     "motion",
@@ -29,11 +29,11 @@ export function useActiveTool(): [Tool, (next: Tool) => void] {
     const pathname = usePathname();
     const searchParams = useSearchParams();
 
-    const tool = parseTool(searchParams.get("m"));
+    const tool = parseTool(searchParams.get("menu"));
 
     const setTool = useCallback((next: Tool) => {
         const params = new URLSearchParams(searchParams.toString());
-        params.set("m", next);
+        params.set("menu", next);
         router.replace(`${pathname}?${params.toString()}`);
     }, [router, pathname, searchParams]);
 
