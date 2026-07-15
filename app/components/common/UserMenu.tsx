@@ -10,7 +10,7 @@ import { useTranslations } from "next-intl";
 
 export function UserMenu() {
   const t = useTranslations('userMenu');
-  const { user, profile, signOut, loading } = useAuth();
+  const { user, profile, signOut, loading, localMode } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleSignOut = async () => {
@@ -33,6 +33,17 @@ export function UserMenu() {
     );
   }
 
+  if (localMode) {
+    return (
+      <Button variant="primary" asChild>
+        <Link href="/editor" className="flex items-center gap-2 text-sm">
+          <Icon icon="lucide:hard-drive" className="size-4" aria-hidden="true" />
+          Local editor
+        </Link>
+      </Button>
+    );
+  }
+
   if (!user) {
     return (
       <div className="flex items-center gap-2 sm:gap-4 h-11">
@@ -50,7 +61,7 @@ export function UserMenu() {
 
   const meta = user.user_metadata || {};
   const displayName = profile?.first_name || profile?.full_name || meta.full_name || meta.name || user.email?.split("@")[0] || t('defaultUser');
-  const avatarUrl = profile?.avatar_url || meta.avatar_url || meta.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`;
+  const avatarUrl = profile?.avatar_url || meta.avatar_url || meta.picture || "/images/metadata/favicon.svg";
   const provider = profile?.provider || meta.provider || "email";
 
   return (

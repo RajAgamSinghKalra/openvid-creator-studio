@@ -7,6 +7,9 @@ import { SliderControl } from "../../../../components/ui/SliderControl";
 import { HANDLE_R, ImageDeviceId, PAD_H, X_HALF, Y_HALF } from "@/types/mockup.types";
 import { Button } from "@/components/ui/button";
 import { DetailPageHeader } from "@/components/ui/DetailHeaderMenu";
+import { useMockup3dContext } from "@/app/contexts/Mockup3dContext";
+import { getMockupTransformState, type MockupAnimationType, type MockupKeyframeEasing, type MockupMotionPreset, type MockupTransformKeyframe } from "@/types/mockup-animation.types";
+import type { AspectRatio } from "@/types";
 
 function PositionPad({
     x,
@@ -245,10 +248,17 @@ export interface Mockup3dMenuProps {
     setImagePhoneY: (v: number) => void;
     setImagePhoneRotX: (v: number) => void;
     setImagePhoneRotY: (v: number) => void;
+    imagePhoneRotX: number;
+    imagePhoneRotY: number;
+    imagePhoneRotZ: number;
     backgroundUrl?: string | null;
     backgroundColorCss?: string | null;
     onBack: () => void;
     onRemove: () => void;
+    aspectRatio?: AspectRatio;
+    onAspectRatioChange?: (ratio: AspectRatio) => void;
+    currentTime?: number;
+    videoDuration?: number;
 }
 
 export function Mockup3dMenu({
@@ -268,12 +278,63 @@ export function Mockup3dMenu({
     setImagePhoneY,
     setImagePhoneRotX,
     setImagePhoneRotY,
+    imagePhoneRotX,
+    imagePhoneRotY,
+    imagePhoneRotZ,
     backgroundUrl,
     backgroundColorCss,
     onBack,
     onRemove,
+    aspectRatio,
+    onAspectRatioChange,
+    currentTime = 0,
+    videoDuration = 0,
 }: Mockup3dMenuProps) {
     const t = useTranslations("mockupMenu");
+    const { imagePhoneAnimation, setImagePhoneAnimation } = useMockup3dContext();
+    const updateAnimation = (updates: Partial<typeof imagePhoneAnimation>) => {
+        setImagePhoneAnimation(previous => ({ ...previous, ...updates }));
+    };
+    const sortedKeyframes = [...(imagePhoneAnimation.keyframes ?? [])].sort((a, b) => a.time - b.time);
+    const currentTransform = getMockupTransformState(imagePhoneAnimation, currentTime, {
+        x: imagePhoneX, y: imagePhoneY, scale: imagePhoneScale,
+        rotationX: imagePhoneRotX, rotationY: imagePhoneRotY, rotationZ: imagePhoneRotZ,
+    });
+    const setKeyframeAtPlayhead = () => {
+        const existing = sortedKeyframes.find(keyframe => Math.abs(keyframe.time - currentTime) < 0.06);
+        const keyframe: MockupTransformKeyframe = {
+            id: existing?.id ?? `mockup-keyframe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            time: Math.max(0, Math.min(videoDuration || Number.POSITIVE_INFINITY, currentTime)),
+            easing: existing?.easing ?? "ease-in-out",
+            ...currentTransform,
+        };
+        updateAnimation({
+            motionPreset: "none",
+            keyframes: existing
+                ? sortedKeyframes.map(item => item.id === existing.id ? keyframe : item)
+                : [...sortedKeyframes, keyframe].sort((a, b) => a.time - b.time),
+        });
+    };
+    const updateKeyframe = (id: string, updates: Partial<MockupTransformKeyframe>) => {
+        updateAnimation({ keyframes: sortedKeyframes.map(keyframe => keyframe.id === id ? { ...keyframe, ...updates } : keyframe).sort((a, b) => a.time - b.time) });
+    };
+    const removeKeyframe = (id: string) => updateAnimation({ keyframes: sortedKeyframes.filter(keyframe => keyframe.id !== id) });
+    const updateTransformAtPlayhead = (updates: Partial<MockupTransformKeyframe>) => {
+        if (sortedKeyframes.length === 0) return false;
+        const existing = sortedKeyframes.find(keyframe => Math.abs(keyframe.time - currentTime) < 0.08);
+        if (existing) updateKeyframe(existing.id, updates);
+        else {
+            const created: MockupTransformKeyframe = {
+                id: `mockup-keyframe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                time: currentTime,
+                easing: "ease-in-out",
+                ...currentTransform,
+                ...updates,
+            };
+            updateAnimation({ keyframes: [...sortedKeyframes, created].sort((a, b) => a.time - b.time) });
+        }
+        return true;
+    };
 
     const handleReset = useCallback(() => {
         setImagePhoneX(0);
@@ -318,6 +379,25 @@ export function Mockup3dMenu({
                 {activeDeviceTpl && <ActiveDevicePreview tpl={activeDeviceTpl} />}
 
                 <div className="flex flex-col gap-4">
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                            <Icon icon="mdi:aspect-ratio" width="15" /> Whole frame ratio
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {(["16:9", "9:16"] as const).map((ratio) => (
+                                <button
+                                    key={ratio}
+                                    type="button"
+                                    onClick={() => onAspectRatioChange?.(ratio)}
+                                    className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-colors ${aspectRatio === ratio ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/3 text-white/60 hover:bg-white/6"}`}
+                                >
+                                    <span className="text-xs font-semibold">{ratio}</span>
+                                    {aspectRatio === ratio && <Icon icon="mdi:check-circle" width="16" />}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-white/35">Changes the background and complete export frame. The 3D device stays independently movable and resizable.</p>
+                    </div>
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
                             {t("configuration")}
@@ -335,12 +415,12 @@ export function Mockup3dMenu({
                     <SliderControl
                         icon="solar:scale-linear"
                         label={t("scale")}
-                        value={Math.round(imagePhoneScale * 100)}
+                        value={Math.round(currentTransform.scale * 100)}
                         min={30}
                         max={300}
                         step={1}
                         onChange={(v) => {
-                            setImagePhoneScale(v / 100);
+                            if (!updateTransformAtPlayhead({ scale: v / 100 })) setImagePhoneScale(v / 100);
                         }}
                         suffix="%"
                     />
@@ -374,13 +454,95 @@ export function Mockup3dMenu({
                     <div className="flex flex-col gap-2">
                         <span className="text-xs text-white/60 font-medium">{t("position")}</span>
                         <PositionPad
-                            x={imagePhoneX}
-                            y={imagePhoneY}
-                            onChangeX={setImagePhoneX}
-                            onChangeY={setImagePhoneY}
+                            x={currentTransform.x}
+                            y={currentTransform.y}
+                            onChangeX={(x) => { if (!updateTransformAtPlayhead({ x })) setImagePhoneX(x); }}
+                            onChangeY={(y) => { if (!updateTransformAtPlayhead({ y })) setImagePhoneY(y); }}
                             backgroundUrl={backgroundUrl}
                             backgroundColorCss={backgroundColorCss}
                         />
+                    </div>
+
+                    <div className="border-t border-white/8 pt-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">3D motion presets</span>
+                            {(imagePhoneAnimation.motionPreset ?? "none") !== "none" && <span className="text-[9px] text-cyan-300">Live motion</span>}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {([
+                                ["none", "None", "mdi:cancel"],
+                                ["turntable", "3D rotate", "mdi:rotate-3d-variant"],
+                                ["float", "Float", "mdi:arrow-up-down"],
+                                ["orbit", "Orbit", "mdi:orbit"],
+                                ["showcase", "Showcase", "mdi:creation"],
+                                ["wobble", "Wobble", "mdi:motion"],
+                            ] as Array<[MockupMotionPreset, string, string]>).map(([preset, label, icon]) => (
+                                <button key={preset} type="button" onClick={() => updateAnimation({ motionPreset: preset })} className={`min-h-14 px-2 py-2 rounded-lg border flex flex-col items-center justify-center gap-1 text-[9px] ${imagePhoneAnimation.motionPreset === preset || (!imagePhoneAnimation.motionPreset && preset === "none") ? "bg-cyan-500/15 border-cyan-400/40 text-cyan-200" : "bg-white/3 border-white/8 text-white/45 hover:bg-white/6"}`}>
+                                    <Icon icon={icon} width="16" /> {label}
+                                </button>
+                            ))}
+                        </div>
+                        <SliderControl icon="mdi:signal" label="3D motion amount" value={imagePhoneAnimation.motionIntensity ?? 60} min={5} max={150} step={1} onChange={(motionIntensity) => updateAnimation({ motionIntensity })} suffix="%" />
+                        <SliderControl icon="mdi:speedometer" label="3D motion speed" value={Math.round((imagePhoneAnimation.motionSpeed ?? 1) * 100)} min={10} max={300} step={5} onChange={(value) => updateAnimation({ motionSpeed: value / 100 })} suffix="%" />
+                    </div>
+
+                    <div className="border-t border-white/8 pt-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <div className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">Transform keyframes</div>
+                                <div className="mt-0.5 text-[9px] text-white/30">Position, 3D rotation, and scale</div>
+                            </div>
+                            <button type="button" onClick={setKeyframeAtPlayhead} className="shrink-0 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-2 text-[10px] font-semibold text-amber-200 hover:bg-amber-500/20">
+                                <Icon icon="mdi:rhombus" width="13" className="inline mr-1" /> Set at {currentTime.toFixed(2)}s
+                            </button>
+                        </div>
+                        {sortedKeyframes.length === 0 ? (
+                            <p className="rounded-lg border border-dashed border-white/10 px-3 py-3 text-[10px] leading-relaxed text-white/35">Move the playhead, press Set, then adjust the phone. Repeat at another time to create a custom animation.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {sortedKeyframes.map((keyframe, index) => (
+                                    <div key={keyframe.id} className="rounded-xl border border-amber-400/15 bg-amber-500/5 p-2.5 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <Icon icon="mdi:rhombus" width="13" className="text-amber-300" />
+                                            <span className="text-[10px] font-semibold text-amber-100">Keyframe {index + 1}</span>
+                                            <input aria-label="Keyframe time" type="number" min={0} max={videoDuration || undefined} step={0.01} value={Number(keyframe.time.toFixed(2))} onChange={(event) => updateKeyframe(keyframe.id, { time: Math.max(0, Number(event.target.value)) })} className="ml-auto w-16 rounded-md border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-white outline-none" />
+                                            <button type="button" aria-label="Delete keyframe" onClick={() => removeKeyframe(keyframe.id)} className="text-white/35 hover:text-red-300"><Icon icon="lucide:trash-2" width="13" /></button>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {([
+                                                ["x", "X"], ["y", "Y"], ["scale", "Scale"],
+                                                ["rotationX", "Rot X"], ["rotationY", "Rot Y"], ["rotationZ", "Rot Z"],
+                                            ] as Array<["x" | "y" | "scale" | "rotationX" | "rotationY" | "rotationZ", string]>).map(([field, label]) => (
+                                                <label key={field} className="text-[8px] uppercase text-white/35">{label}<input type="number" step={field === "scale" ? 0.05 : 1} value={Number(keyframe[field].toFixed(2))} onChange={(event) => updateKeyframe(keyframe.id, { [field]: Number(event.target.value) })} className="mt-0.5 w-full rounded-md border border-white/8 bg-black/20 px-1.5 py-1.5 text-[10px] normal-case text-white outline-none" /></label>
+                                            ))}
+                                        </div>
+                                        <select aria-label="Keyframe easing" value={keyframe.easing} onChange={(event) => updateKeyframe(keyframe.id, { easing: event.target.value as MockupKeyframeEasing })} className="w-full rounded-md border border-white/8 bg-[#111116] px-2 py-1.5 text-[10px] text-white/65 outline-none">
+                                            <option value="linear">Linear</option><option value="ease-in-out">Ease in/out</option><option value="ease-out">Ease out</option>
+                                        </select>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={() => updateAnimation({ keyframes: [] })} className="w-full text-[10px] text-white/35 hover:text-red-300">Clear all keyframes</button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="border-t border-white/8 pt-4 space-y-3">
+                        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">Timeline animation</span>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(["none", "fade", "slide-up", "slide-down", "slide-left", "slide-right", "scale", "pop"] as MockupAnimationType[]).map(type => (
+                                <button key={type} type="button" onClick={() => updateAnimation({ type })} className={`min-h-9 px-2 squircle-element border text-[9px] capitalize ${imagePhoneAnimation.type === type ? "bg-violet-500/20 border-violet-400/40 text-violet-300" : "bg-white/3 border-white/8 text-white/45"}`}>
+                                    {type.replace("-", " ")}
+                                </button>
+                            ))}
+                        </div>
+                        <SliderControl icon="mdi:timer-outline" label="Entrance duration" value={Math.round(imagePhoneAnimation.duration * 100)} min={10} max={500} step={5} onChange={(value) => updateAnimation({ duration: value / 100 })} suffix=" ×0.01s" />
+                        <SliderControl icon="mdi:timer-sand" label="Entrance delay" value={Math.round(imagePhoneAnimation.delay * 100)} min={0} max={1000} step={5} onChange={(value) => updateAnimation({ delay: value / 100 })} suffix=" ×0.01s" />
+                        <SliderControl icon="mdi:motion" label="Motion amount" value={imagePhoneAnimation.intensity} min={10} max={300} step={1} onChange={(intensity) => updateAnimation({ intensity })} />
+                        <div className="grid grid-cols-2 gap-2">
+                            <label className="text-[9px] uppercase tracking-wider text-white/40">Start (sec)<input type="number" min={0} step={0.1} value={imagePhoneAnimation.startTime} onChange={(event) => updateAnimation({ startTime: Math.max(0, Number(event.target.value)) })} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                            <label className="text-[9px] uppercase tracking-wider text-white/40">End (0 = full)<input type="number" min={0} step={0.1} value={imagePhoneAnimation.endTime} onChange={(event) => updateAnimation({ endTime: Math.max(0, Number(event.target.value)) })} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-white/30">Drag or resize the purple Mockup clip in the timeline for normal editor-style timing.</p>
                     </div>
                 </div>
 

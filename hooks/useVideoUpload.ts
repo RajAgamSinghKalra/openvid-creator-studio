@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { saveUploadedVideo, getUploadedVideo, deleteUploadedVideo } from "@/lib/video-upload-cache";
+import { saveUploadedVideo, getUploadedVideo, deleteUploadedVideo, getVideoMetadata } from "@/lib/video-upload-cache";
 import type { AspectRatio } from "@/types";
 
 interface UploadedVideoData {
@@ -21,7 +21,9 @@ interface UseVideoUploadReturn {
     uploadError: string | null;
 }
 
-const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
+// Browser persistence copies the Blob. Keep it optional so opening a large
+// local file remains fast and does not double its storage footprint.
+const BACKGROUND_CACHE_LIMIT = 200 * 1024 * 1024;
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"];
 
 function mapAspectRatio(ratio: string): AspectRatio {
@@ -48,24 +50,28 @@ export function useVideoUpload(): UseVideoUploadReturn {
                 throw new Error("Formato de video no soportado. Use MP4, WebM o MOV.");
             }
 
-            if (file.size > MAX_VIDEO_SIZE) {
-                throw new Error("El video es demasiado grande. Máximo 500MB.");
+            const metadata = await getVideoMetadata(file);
+            const timestamp = Date.now();
+            const url = URL.createObjectURL(file);
+            const videoId = `session-${timestamp}-${crypto.randomUUID()}`;
+
+            // Do not block the editor on an IndexedDB copy. Smaller files get
+            // best-effort reload persistence; larger files stay session-only.
+            if (file.size <= BACKGROUND_CACHE_LIMIT) {
+                void saveUploadedVideo(file, metadata).catch((error) => {
+                    console.warn("Video opened, but browser reload persistence was unavailable:", error);
+                });
             }
-
-            const cachedVideo = await saveUploadedVideo(file);
-
-            const url = URL.createObjectURL(cachedVideo.blob);
-            const videoId = `uploaded-${cachedVideo.uploadedAt}`;
 
             return {
                 url,
                 videoId,
-                duration: cachedVideo.duration,
-                aspectRatio: mapAspectRatio(cachedVideo.aspectRatio),
-                fileName: cachedVideo.fileName,
-                width: cachedVideo.width,
-                height: cachedVideo.height,
-                timestamp: cachedVideo.uploadedAt,
+                duration: metadata.duration,
+                aspectRatio: mapAspectRatio(metadata.aspectRatio),
+                fileName: file.name,
+                width: metadata.width,
+                height: metadata.height,
+                timestamp,
             };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Error al subir el video";

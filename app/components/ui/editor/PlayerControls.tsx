@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { AspectRatioSelect } from "../AspectRatioSelect";
 import { formatTime } from "@/lib/video.utils";
-import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, type PlayerControlsProps } from "@/types/player-control.types";
+import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, type PlayerControlsProps, type PreviewQuality } from "@/types/player-control.types";
 import { TooltipAction } from "@/components/ui/tooltip-action";
 import { ImageMaskEditor } from "./ImageMaskEditor";
 
@@ -31,6 +31,17 @@ export function PlayerControls({
     videoPreviewImageUrl,
     onSplitClip,
     canSplitClip = false,
+    previewQuality,
+    onPreviewQualityChange,
+    isPreviewCaching = false,
+    previewCacheProgress = 0,
+    proxyStatus = "idle",
+    proxyProgress = 0,
+    proxyCount = 0,
+    canCreateProxies = false,
+    onCreateProxies,
+    onRemoveProxies,
+    onCancelProxyCreation,
 }: PlayerControlsProps) {
     const t = useTranslations("playerControls");
 
@@ -102,6 +113,12 @@ export function PlayerControls({
 
     const fullscreenLabel = isFullscreen ? t("fullscreen.exit") : t("fullscreen.enter");
     const playPauseLabel = isPlaying ? t("transport.pause") : t("transport.play");
+    const previewLabels: Record<PreviewQuality, string> = {
+        auto: "Auto",
+        full: "Full",
+        half: "1/2",
+        quarter: "1/4",
+    };
 
     return (
         <div
@@ -239,6 +256,79 @@ export function PlayerControls({
             </div>
 
             <div className="flex items-center gap-2">
+                <div className="relative hidden md:flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.025] px-2 py-1.5">
+                    <span
+                        className={`h-1.5 w-1.5 rounded-full ${isPreviewCaching ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`}
+                        aria-hidden="true"
+                    />
+                    <label htmlFor="preview-quality" className="text-[9px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Preview
+                    </label>
+                    <select
+                        id="preview-quality"
+                        value={previewQuality}
+                        onChange={(event) => onPreviewQualityChange(event.target.value as PreviewQuality)}
+                        className="cursor-pointer bg-transparent text-[10px] font-semibold text-zinc-200 outline-none"
+                        aria-label="Preview resolution"
+                    >
+                        {(Object.keys(previewLabels) as PreviewQuality[]).map((quality) => (
+                            <option key={quality} value={quality} className="bg-zinc-900 text-white">
+                                {previewLabels[quality]}
+                            </option>
+                        ))}
+                    </select>
+                    {isPreviewCaching && (
+                        <div
+                            className="absolute inset-x-1 bottom-0 h-px overflow-hidden rounded-full bg-white/10"
+                            title={`Caching preview ${Math.round(previewCacheProgress)}%`}
+                        >
+                            <div
+                                className="h-full bg-amber-400 transition-[width] duration-150"
+                                style={{ width: `${Math.max(0, Math.min(100, previewCacheProgress))}%` }}
+                            />
+                        </div>
+                    )}
+                </div>
+                <TooltipAction label={proxyStatus === "generating" ? "Cancel proxy creation" : proxyStatus === "ready" ? "Remove temporary editing proxies" : "Create temporary 960px editing proxies"}>
+                    <button
+                        type="button"
+                        onClick={proxyStatus === "generating" ? onCancelProxyCreation : proxyStatus === "ready" ? onRemoveProxies : onCreateProxies}
+                        disabled={proxyStatus !== "generating" && !canCreateProxies}
+                        className={`hidden lg:flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${proxyStatus === "ready"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                            : proxyStatus === "error"
+                                ? "border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/15"
+                                : "border-white/10 bg-white/[0.025] text-zinc-300 hover:bg-white/[0.06] hover:text-white"}`}
+                        aria-label={proxyStatus === "generating" ? "Cancel proxy creation" : proxyStatus === "ready" ? "Remove proxies" : "Create proxies"}
+                    >
+                        <Icon
+                            icon={proxyStatus === "generating" ? "lucide:circle-x" : proxyStatus === "ready" ? "lucide:trash-2" : "lucide:gauge"}
+                            width="13"
+                            aria-hidden="true"
+                        />
+                        {proxyStatus === "generating"
+                            ? `Cancel ${Math.round(proxyProgress)}%`
+                            : proxyStatus === "ready"
+                                ? `Proxy ${proxyCount}`
+                                : proxyStatus === "error"
+                                    ? "Retry proxy"
+                                    : "Create proxy"}
+                    </button>
+                </TooltipAction>
+                <div className="hidden sm:flex items-center rounded-lg border border-white/10 bg-white/[0.025] p-0.5" role="group" aria-label="Frame aspect ratio">
+                    {(["16:9", "9:16"] as const).map((ratio) => (
+                        <button
+                            key={ratio}
+                            type="button"
+                            onClick={() => onAspectRatioChange(ratio)}
+                            aria-label={`Set whole frame to ${ratio}`}
+                            aria-pressed={aspectRatio === ratio}
+                            className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors ${aspectRatio === ratio ? "bg-blue-500 text-white shadow-sm" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
+                        >
+                            {ratio}
+                        </button>
+                    ))}
+                </div>
                 <ImageMaskEditor
                     maskConfig={videoMaskConfig}
                     onMaskConfigChange={onVideoMaskConfigChange}

@@ -12,6 +12,7 @@ import { GetMediaMaskStyles } from "@/lib/media-mask.utils";
 export interface IPhone17ProMax3DApi {
     renderAt: (width: number, height: number) => void;
     restorePreview: () => void;
+    setRotation: (rx: number, ry: number, rz: number) => void;
     hasBuiltInShadow: boolean;
 }
 
@@ -36,6 +37,8 @@ interface Props {
     environment?: EnvironmentPreset;
     isSelected?: boolean;
     isHovered?: boolean;
+    isPlaying?: boolean;
+    previewDpr?: number;
 }
 
 const TEX_W = 1284 * 2;
@@ -60,6 +63,7 @@ function ModelScene({
     onApi,
     onLoaded,
     videoElement,
+    previewDpr = 3,
     shadowIntensity = 0,
     shadowColor = "#000000",
     autoRotate = false,
@@ -80,6 +84,7 @@ function ModelScene({
     onApi?: (api: IPhone17ProMax3DApi | null) => void;
     onLoaded?: () => void;
     videoElement?: HTMLVideoElement | null;
+    previewDpr?: number;
     shadowIntensity?: number;
     shadowColor?: string;
     autoRotate?: boolean;
@@ -109,6 +114,21 @@ function ModelScene({
             videoTextureRef.current.needsUpdate = true;
         }
     });
+
+    useEffect(() => {
+        if (!videoElement) return;
+        const invalidateVideoFrame = () => {
+            if (videoTextureRef.current) videoTextureRef.current.needsUpdate = true;
+            invalidate();
+        };
+        videoElement.addEventListener("seeked", invalidateVideoFrame);
+        videoElement.addEventListener("loadeddata", invalidateVideoFrame);
+        invalidateVideoFrame();
+        return () => {
+            videoElement.removeEventListener("seeked", invalidateVideoFrame);
+            videoElement.removeEventListener("loadeddata", invalidateVideoFrame);
+        };
+    }, [videoElement, invalidate]);
 
     useEffect(() => {
         clonedScene.traverse((child) => {
@@ -158,15 +178,26 @@ function ModelScene({
                 const freshH = gl.domElement.clientHeight;
                 (cam as THREE.PerspectiveCamera).aspect = freshW / freshH;
                 (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
-                gl.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
+                gl.setPixelRatio(previewDpr);
                 gl.setSize(freshW, freshH, false);
+                invalidate();
+            },
+            setRotation: (rx, ry, rz) => {
+                const orbit = orbitRef.current;
+                const DEGREE = Math.PI / 180;
+                if (orbit) {
+                    const radius = orbit.object.position.distanceTo(orbit.target) || 1.5;
+                    orbit.object.position.setFromSphericalCoords(radius, Math.PI / 2 - rx * DEGREE, ry * DEGREE).add(orbit.target);
+                    orbit.update();
+                }
+                if (rootRef.current) rootRef.current.rotation.z = rz * DEGREE;
                 invalidate();
             },
             hasBuiltInShadow: true,
         };
         capturedOnApi?.(api);
         return () => capturedOnApi?.(null);
-    }, [gl, scene, camera, cameraRef, invalidate]);
+    }, [gl, scene, camera, cameraRef, rootRef, invalidate, previewDpr]);
 
     useEffect(() => {
         onLoaded?.();
@@ -416,6 +447,8 @@ function CanvasWithLoader({
     rotationSpeed,
     glow,
     environment,
+    isPlaying,
+    previewDpr,
 }: {
     imageUrl: string | null;
     imageMaskConfig: ImageMaskConfigLike | null;
@@ -436,13 +469,15 @@ function CanvasWithLoader({
     rotationSpeed?: number;
     glow?: number;
     environment?: EnvironmentPreset;
+    isPlaying?: boolean;
+    previewDpr?: number;
 }) {
     const [loaded, setLoaded] = useState(false);
     const handleLoaded = useCallback(() => setLoaded(true), []);
 
     return (
         <>
-            <Canvas style={{ width: "100%", height: "100%", overflow: "visible" }} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: "high-performance" }} dpr={3} frameloop={videoElement ? "always" : "demand"} resize={{ scroll: false, debounce: { scroll: 0, resize: 0 } }} onCreated={({ gl, scene }) => {
+            <Canvas style={{ width: "100%", height: "100%", overflow: "visible" }} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: "high-performance" }} dpr={previewDpr ?? 3} frameloop={(videoElement && isPlaying) || autoRotate ? "always" : "demand"} resize={{ scroll: false, debounce: { scroll: 0, resize: 0 } }} onCreated={({ gl, scene }) => {
                 gl.outputColorSpace = THREE.SRGBColorSpace;
                 gl.toneMapping = THREE.NeutralToneMapping;
                 gl.toneMappingExposure = 1.0;
@@ -464,6 +499,7 @@ function CanvasWithLoader({
                         onApi={onApi}
                         onLoaded={handleLoaded}
                         videoElement={videoElement}
+                        previewDpr={previewDpr}
                         shadowIntensity={shadowIntensity}
                         shadowColor={shadowColor}
                         autoRotate={autoRotate}
@@ -502,6 +538,8 @@ export function IPhone17ProMax3DViewer({
     environment,
     isSelected = false,
     isHovered = false,
+    isPlaying = false,
+    previewDpr = 3,
 }: Props) {
     const rootRef = useRef<THREE.Group | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -565,6 +603,8 @@ export function IPhone17ProMax3DViewer({
                             rotationSpeed={rotationSpeed}
                             glow={glow}
                             environment={environment}
+                            isPlaying={isPlaying}
+                            previewDpr={previewDpr}
                         />
                     </div>
                 </div>

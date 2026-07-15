@@ -4,9 +4,9 @@ import { useState, useCallback, RefObject, useRef } from "react";
 import { Output, Mp4OutputFormat, BufferTarget, CanvasSource } from "mediabunny";
 import type { VideoCanvasHandle } from "@/types";
 import type { ExportQuality, ExportSettings, ExportProgress } from "@/types";
-import type { VideoTrackClip } from "@/types/video-track.types";
+import { getClipPlaybackRate, getClipTimelineDuration, timelineToClipTime, type VideoTrackClip } from "@/types/video-track.types";
 import { QUALITY_SETTINGS, DEFAULT_EXPORT_FPS } from "@/lib/constants";
-import { ensureVideoReady, waitForVideoFrame, downloadBlob } from "@/lib/video.utils";
+import { ensureVideoReady, seekVideoToTime, downloadBlob } from "@/lib/video.utils";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { toBlobURL } from "@ffmpeg/util";
 
@@ -16,12 +16,27 @@ interface CancellationToken {
     cancelled: boolean;
 }
 
+function buildAtempoFilter(rate: number): string {
+    const filters: number[] = [];
+    let remaining = rate;
+    while (remaining < 0.5) {
+        filters.push(0.5);
+        remaining /= 0.5;
+    }
+    while (remaining > 2) {
+        filters.push(2);
+        remaining /= 2;
+    }
+    filters.push(remaining);
+    return filters.map(value => `atempo=${Number(value.toFixed(4))}`).join(",");
+}
+
 function getActiveClipAtTime(clips: VideoTrackClip[], timelineTime: number): { clip: VideoTrackClip; clipTime: number } | null {
     for (const clip of clips) {
-        const clipDuration = clip.trimEnd - clip.trimStart;
+        const clipDuration = getClipTimelineDuration(clip);
         const clipEndTime = clip.startTime + clipDuration;
         if (timelineTime >= clip.startTime && timelineTime < clipEndTime) {
-            const clipTime = clip.trimStart + (timelineTime - clip.startTime);
+            const clipTime = timelineToClipTime(clip, timelineTime);
             return { clip, clipTime };
         }
     }
@@ -189,8 +204,8 @@ export function useVideoExport(
                     trimStart,
                     fps,
                     qualitySettings.bitrate,
-                    qualitySettings.width,
-                    qualitySettings.height,
+                    targetWidth,
+                    targetHeight,
                     setExportProgress,
                     cancellationRef.current,
                     settings
@@ -259,6 +274,7 @@ async function exportWithFFmpegWebM(
 ): Promise<void> {
     const ffmpeg = new FFmpeg();
     const totalFrames = Math.ceil(duration * fps);
+    const frameDuration = 1 / fps;
 
     setProgress({ status: "preparing", progress: 3, message: "Cargando motor WebM..." });
 
@@ -269,19 +285,13 @@ async function exportWithFFmpegWebM(
     });
 
     video.pause();
-    video.currentTime = trimStart;
-    await waitForVideoFrame(video);
 
     for (let i = 0; i < totalFrames; i++) {
         if (cancellation.cancelled) throw new Error("Exportación cancelada");
 
         const timelineTime = trimStart + i / fps;
+        await seekVideoToTime(video, timelineTime, Math.max(frameDuration * 0.75, 0.02));
         await canvasHandle.drawFrame(true, timelineTime);
-
-        const nextI = i + 1;
-        if (nextI < totalFrames) {
-            video.currentTime = Math.min(trimStart + nextI / fps, trimStart + duration - 0.001);
-        }
 
         const blob = await new Promise<Blob>((resolve, reject) =>
             canvas.toBlob(b => b ? resolve(b) : reject(), "image/png")
@@ -295,10 +305,6 @@ async function exportWithFFmpegWebM(
                 progress: 8 + Math.round((i / totalFrames) * 60),
                 message: `[Paso 1/2] Guardando frame ${i + 1} de ${totalFrames}...`,
             });
-        }
-
-        if (nextI < totalFrames) {
-            await waitForVideoFrame(video);
         }
     }
 
@@ -391,8 +397,6 @@ async function exportWithMediabunny(
     await output.start();
 
     video.pause();
-    video.currentTime = trimStart;
-    await waitForVideoFrame(video);
 
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
         if (cancellation.cancelled) {
@@ -402,13 +406,9 @@ async function exportWithMediabunny(
         const outputTime = frameIndex / fps;
         const timelineTime = trimStart + outputTime;
 
+        await seekVideoToTime(video, timelineTime, Math.max(frameDuration * 0.75, 0.02));
         await canvasHandle.drawFrame(true, timelineTime);
         await videoSource.add(outputTime, frameDuration);
-
-        const nextIndex = frameIndex + 1;
-        if (nextIndex < totalFrames) {
-            video.currentTime = Math.min(trimStart + nextIndex / fps, trimStart + duration - 0.001);
-        }
 
         if (frameIndex % 10 === 0 || frameIndex === totalFrames - 1) {
             const progress = 10 + Math.round((frameIndex / totalFrames) * 80);
@@ -417,10 +417,6 @@ async function exportWithMediabunny(
                 progress,
                 message: `Codificando ${frameIndex + 1}/${totalFrames} frames (${fps}fps)...`,
             });
-        }
-
-        if (nextIndex < totalFrames) {
-            await waitForVideoFrame(video);
         }
     }
 
@@ -554,12 +550,7 @@ async function exportWithMediabunnyAndAudio(
                 currentClipId = firstClip.id;
             }
         }
-        video.currentTime = clips[0]?.trimStart || 0;
-    } else {
-        video.currentTime = trimStart;
     }
-
-    await waitForVideoFrame(video);
 
     const lockedWidth = canvas.width;
     const lockedHeight = canvas.height;
@@ -592,9 +583,10 @@ async function exportWithMediabunnyAndAudio(
                     }
                 }
 
-                video.currentTime = clipTime;
-                await waitForVideoFrame(video);
+                await seekVideoToTime(video, clipTime, Math.max(frameDuration * 0.75, 0.02));
             }
+        } else {
+            await seekVideoToTime(video, timelineTime, Math.max(frameDuration * 0.75, 0.02));
         }
 
         if (canvas.width !== lockedWidth || canvas.height !== lockedHeight) {
@@ -604,13 +596,6 @@ async function exportWithMediabunnyAndAudio(
 
         await canvasHandle.drawFrame(true, timelineTime);
         await videoSource.add(outputTime, frameDuration);
-
-        if (!hasMultipleClips) {
-            const nextFrame = frameIndex + 1;
-            if (nextFrame < totalFrames) {
-                video.currentTime = Math.min(trimStart + nextFrame / fps, trimStart + duration - 0.001);
-            }
-        }
 
         if (frameIndex % 10 === 0 || frameIndex === totalFrames - 1) {
             const progress = 5 + Math.round((frameIndex / totalFrames) * 50);
@@ -623,12 +608,6 @@ async function exportWithMediabunnyAndAudio(
             });
         }
 
-        if (!hasMultipleClips) {
-            const nextFrame = frameIndex + 1;
-            if (nextFrame < totalFrames) {
-                await waitForVideoFrame(video);
-            }
-        }
     }
 
     if (cancellation.cancelled) {
@@ -792,7 +771,8 @@ async function exportWithMediabunnyAndAudio(
             if (hasMultipleClips && clipAudioFiles.length > 0) {
                 for (const { clip } of clipAudioFiles) {
                     const delayMs = Math.round(clip.startTime * 1000);
-                    filterComplex += `[${inputIndex}:a]adelay=${delayMs}|${delayMs},volume=${volume}[a${inputIndex}];`;
+                    const rate = getClipPlaybackRate(clip);
+                    filterComplex += `[${inputIndex}:a]${buildAtempoFilter(rate)},adelay=${delayMs}|${delayMs},volume=${volume}[a${inputIndex}];`;
                     audioInputs.push(`[a${inputIndex}]`);
                     inputIndex++;
                 }
@@ -941,19 +921,13 @@ async function exportWithFFmpegGif(
         setProgress({ status: "encoding", progress: 8, message: `Capturando ${totalFrames} frames...` });
 
         video.pause();
-        video.currentTime = trimStart;
-        await waitForVideoFrame(video);
 
         for (let i = 0; i < totalFrames; i++) {
             if (cancellation.cancelled) throw new Error("Exportación cancelada");
 
             const timelineTime = trimStart + i / fps;
+            await seekVideoToTime(video, timelineTime, Math.max((1 / fps) * 0.75, 0.02));
             await canvasHandle.drawFrame(true, timelineTime);
-
-            const nextI = i + 1;
-            if (nextI < totalFrames) {
-                video.currentTime = Math.min(trimStart + nextI / fps, trimStart + duration - 0.001);
-            }
 
             const blob = await canvasToBlobFast(canvas);
             const data = await blobToUint8Array(blob);
@@ -966,10 +940,6 @@ async function exportWithFFmpegGif(
                     progress,
                     message: `Capturando frame ${i + 1}/${totalFrames}...`,
                 });
-            }
-
-            if (nextI < totalFrames) {
-                await waitForVideoFrame(video);
             }
         }
 

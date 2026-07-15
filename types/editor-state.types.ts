@@ -4,11 +4,15 @@ import type { MockupConfig } from "@/types/mockup.types";
 import type { CanvasElement } from "@/types/canvas-elements.types";
 import type { CameraConfig } from "@/types/camera.types";
 import type { Preview3DConfig, ImageMaskConfig } from "@/types/photo.types";
+import { DEFAULT_BACKGROUND_VIDEO_TRANSFORM, type BackgroundVideoTransform } from "@/types/background.types";
+import { DEFAULT_MOCKUP_ANIMATION, type MockupAnimationConfig } from "@/types/mockup-animation.types";
+import type { VideoTrackClip } from "@/types/video-track.types";
 
 export interface VideoTransform {
     rotation: number;
     translateX: number;
     translateY: number;
+    scale: number;
 }
 
 export interface EditorState {
@@ -19,11 +23,14 @@ export interface EditorState {
     roundedCorners: number;
     shadows: number;
     selectedImageUrl: string;
+    selectedBackgroundVideoId: string;
+    backgroundVideoTransform: BackgroundVideoTransform;
     backgroundColorConfig: BackgroundColorConfig | null;
     aspectRatio: AspectRatio;
     customDimensions: { width: number; height: number } | null;
     cropArea: CropArea | undefined;
     trimRange: TrimRange;
+    videoClips: VideoTrackClip[];
     zoomFragments: ZoomFragment[];
     mockupId: string;
     mockupConfig: MockupConfig;
@@ -51,6 +58,7 @@ export interface EditorState {
     imagePhoneShadow: number;
     imagePhoneShadowColor: string;
     imagePhoneRefWidth: number;
+    imagePhoneAnimation: MockupAnimationConfig;
 }
 
 export function createInitialEditorState(overrides?: Partial<EditorState>): EditorState {
@@ -62,11 +70,14 @@ export function createInitialEditorState(overrides?: Partial<EditorState>): Edit
         roundedCorners: 10,
         shadows: 10,
         selectedImageUrl: "",
+        selectedBackgroundVideoId: "",
+        backgroundVideoTransform: { ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM },
         backgroundColorConfig: null,
         aspectRatio: "auto",
         customDimensions: null,
         cropArea: undefined,
         trimRange: { start: 0, end: 0 },
+        videoClips: [],
         zoomFragments: [],
         mockupId: "none",
         mockupConfig: {
@@ -86,6 +97,7 @@ export function createInitialEditorState(overrides?: Partial<EditorState>): Edit
             rotation: 0,
             translateX: 0,
             translateY: 0,
+            scale: 1,
         },
         imageTransform: {
             id: "front",
@@ -118,6 +130,7 @@ export function createInitialEditorState(overrides?: Partial<EditorState>): Edit
         imagePhoneShadow: 0.6,
         imagePhoneShadowColor: '#000000',
         imagePhoneRefWidth: 0,
+        imagePhoneAnimation: { ...DEFAULT_MOCKUP_ANIMATION },
         ...overrides,
     };
 }

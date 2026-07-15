@@ -4,11 +4,10 @@ import { type NextRequest, NextResponse } from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Missing Supabase environment variables");
-}
-
 export const updateSession = async (request: NextRequest) => {
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.next({ request });
+  }
   let supabaseResponse = NextResponse.next({
     request,
   });

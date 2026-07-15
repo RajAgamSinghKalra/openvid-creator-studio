@@ -28,11 +28,15 @@ export interface MockupMenuProps {
   onMockupConfigChange?: (config: Partial<MockupConfig>) => void;
   backgroundUrl?: string | null;
   backgroundColorCss?: string | null;
-  backgroundTab?: "wallpaper" | "image" | "color" | "unsplash";
+  backgroundTab?: "wallpaper" | "image" | "video" | "color" | "unsplash";
   selectedWallpaper?: number;
   selectedImageUrl?: string;
   initialPage?: MenuPage;
   mediaType?: "video" | "image";
+  aspectRatio?: import("@/types").AspectRatio;
+  onAspectRatioChange?: (ratio: import("@/types").AspectRatio) => void;
+  currentTime?: number;
+  videoDuration?: number;
 }
 
 export function MockupMenu({
@@ -46,7 +50,10 @@ export function MockupMenu({
   selectedWallpaper,
   selectedImageUrl,
   initialPage = "home",
-  mediaType = "image",
+  aspectRatio,
+  onAspectRatioChange,
+  currentTime = 0,
+  videoDuration = 0,
 }: MockupMenuProps) {
   const t = useTranslations("mockupMenu");
 
@@ -74,6 +81,7 @@ export function MockupMenu({
     setImagePhoneScale,
     imagePhoneRotX,
     imagePhoneRotY,
+    imagePhoneRotZ,
     setImagePhoneRotX,
     setImagePhoneRotY,
     imagePhoneDevice,
@@ -125,7 +133,7 @@ export function MockupMenu({
     return null;
   }, [backgroundUrl, backgroundTab, selectedImageUrl, selectedWallpaper]);
 
-  const hasActiveFrame = mockupId !== "none" || (mediaType === "image" && imagePhoneActive);
+  const hasActiveFrame = mockupId !== "none" || imagePhoneActive;
 
   const handleMockupSelect = useCallback((id: string) => {
     onMockupChange?.(id);
@@ -261,6 +269,8 @@ export function MockupMenu({
         onMockupChange={onMockupChange}
         onMockupConfigChange={onMockupConfigChange}
         onBack={() => setPage("home")}
+        aspectRatio={aspectRatio}
+        onAspectRatioChange={onAspectRatioChange}
       />
     );
   }
@@ -284,10 +294,17 @@ export function MockupMenu({
         setImagePhoneY={setImagePhoneY}
         setImagePhoneRotX={setImagePhoneRotX}
         setImagePhoneRotY={setImagePhoneRotY}
+        imagePhoneRotX={imagePhoneRotX}
+        imagePhoneRotY={imagePhoneRotY}
+        imagePhoneRotZ={imagePhoneRotZ}
         backgroundUrl={resolvedBackgroundUrl}
         backgroundColorCss={backgroundColorCss}
         onBack={() => setPage("home")}
         onRemove={handleRemoveAll}
+        aspectRatio={aspectRatio}
+        onAspectRatioChange={onAspectRatioChange}
+        currentTime={currentTime}
+        videoDuration={videoDuration}
       />
     );
   }
@@ -327,7 +344,7 @@ export function MockupMenu({
                     const categoryConfig = MOCKUP_CATEGORIES.find(
                       (c) => c.id === currentMockup?.category
                     );
-                    const bgUrl = categoryConfig?.bgUrl || "https://i.ibb.co/r2JQ3Gcy/minimal-02.jpg";
+                    const bgUrl = categoryConfig?.bgUrl || "/images/mockups/bg-browser.avif";
                     return (
                       <div
                         className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-500 group-hover:scale-110"
@@ -397,7 +414,7 @@ export function MockupMenu({
                         <div
                           className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-500 group-hover:scale-105"
                           style={{
-                            backgroundImage: `url('${categoryConfig?.bgUrl || "https://i.ibb.co/r2JQ3Gcy/minimal-02.jpg"
+                            backgroundImage: `url('${categoryConfig?.bgUrl || "/images/mockups/bg-browser.avif"
                               }')`,
                           }}
                         >
@@ -462,9 +479,7 @@ export function MockupMenu({
           </div>
         </div>
       </div>
-      {mediaType === "image" && (
-
-        <>
+      <>
           <div className="h-px bg-white/6" />
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -515,9 +530,7 @@ export function MockupMenu({
               </div>
             </div>
           </div>
-        </>
-      )}
-      
+      </>
       {hasActiveFrame && (
         <Button onClick={handleRemoveAll} variant="outline" className="w-full text-xs" aria-label={t("remove")}>
           <Icon icon="ph:trash-bold" width="13" aria-hidden="true" />

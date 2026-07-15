@@ -1,35 +1,135 @@
 import { TIMELINE_ZOOM_SCALE } from './constants';
 
-export function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
-    return new Promise((resolve) => {
-        let resolved = false;
-        
-        const done = () => {
-            if (!resolved) {
-                resolved = true;
-                resolve();
+const VIDEO_FRAME_TIMEOUT_MS = 3000;
+const SEEK_EPSILON_SECONDS = 0.0005;
+
+/**
+ * Wait until the browser has actually presented a decoded video frame.
+ *
+ * A `currentTime` assignment alone is not sufficient for frame-accurate
+ * export: requestVideoFrameCallback can still report the frame that was
+ * presented immediately before the seek. When an expected time is supplied,
+ * reject that stale frame instead of silently drawing it into the export.
+ */
+export function waitForVideoFrame(
+    video: HTMLVideoElement,
+    expectedTime?: number,
+    toleranceSeconds = 0.025,
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let callbackId: number | null = null;
+
+        const cleanup = () => {
+            clearTimeout(timeoutId);
+            if (callbackId !== null && 'cancelVideoFrameCallback' in video) {
+                video.cancelVideoFrameCallback(callbackId);
             }
         };
-        
-        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (video as any).requestVideoFrameCallback(done);
-            // Long safety timeout to prevent blocking
-            setTimeout(done, 2000);
-        } else {
-            // Fallback for browsers that do not support requestVideoFrameCallback
-            if (video.readyState >= 2) {
-                const handleSeeked = () => {
-                    video.removeEventListener('seeked', handleSeeked);
-                    done();
-                };
-                video.addEventListener('seeked', handleSeeked, { once: true });
-                setTimeout(done, 100);
-            } else {
-                requestAnimationFrame(done);
-            }
+
+        const succeed = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+        };
+
+        const fail = (error: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(error);
+        };
+
+        const timeoutId = window.setTimeout(() => {
+            fail(new Error(`Timed out waiting for video frame at ${expectedTime ?? video.currentTime}s`));
+        }, VIDEO_FRAME_TIMEOUT_MS);
+
+        if ('requestVideoFrameCallback' in video) {
+            callbackId = video.requestVideoFrameCallback((_now, metadata) => {
+                callbackId = null;
+                if (
+                    expectedTime !== undefined &&
+                    Math.abs(metadata.mediaTime - expectedTime) > toleranceSeconds
+                ) {
+                    fail(new Error(
+                        `Video presented a stale frame at ${metadata.mediaTime}s while ${expectedTime}s was requested`,
+                    ));
+                    return;
+                }
+                succeed();
+            });
+            return;
+        }
+
+        // Browsers without requestVideoFrameCallback only expose seek/paint
+        // completion indirectly. Two animation frames ensure the newly-seeked
+        // frame has reached the canvas compositor.
+        requestAnimationFrame(() => requestAnimationFrame(succeed));
+    });
+}
+
+function waitForSeek(video: HTMLVideoElement, targetTime: number): Promise<void> {
+    if (!video.seeking && Math.abs(video.currentTime - targetTime) <= SEEK_EPSILON_SECONDS) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const cleanup = () => {
+            clearTimeout(timeoutId);
+            video.removeEventListener('seeked', onSeeked);
+            video.removeEventListener('error', onError);
+        };
+
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+        };
+
+        const onSeeked = () => finish();
+        const onError = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(new Error(`Video seek failed at ${targetTime}s`));
+        };
+
+        const timeoutId = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(new Error(`Timed out seeking video to ${targetTime}s`));
+        }, VIDEO_FRAME_TIMEOUT_MS);
+
+        video.addEventListener('seeked', onSeeked, { once: true });
+        video.addEventListener('error', onError, { once: true });
+
+        if (Math.abs(video.currentTime - targetTime) > SEEK_EPSILON_SECONDS) {
+            video.currentTime = targetTime;
+        } else if (!video.seeking) {
+            finish();
         }
     });
+}
+
+/** Seek and wait for the exact presented frame used by canvas export. */
+export async function seekVideoToTime(
+    video: HTMLVideoElement,
+    requestedTime: number,
+    toleranceSeconds = 0.025,
+): Promise<void> {
+    const lastDecodableTime = Number.isFinite(video.duration)
+        ? Math.max(0, video.duration - 0.001)
+        : requestedTime;
+    const targetTime = Math.max(0, Math.min(requestedTime, lastDecodableTime));
+
+    video.pause();
+    await waitForSeek(video, targetTime);
+    await waitForVideoFrame(video, targetTime, toleranceSeconds);
 }
 
 /**

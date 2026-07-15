@@ -11,8 +11,15 @@ import { AudioFragmentTrackItem } from "./AudioFragmentTrackItem";
 import { VideoClipTrackItem } from "./VideoClipTrackItem";
 import { Icon } from "@iconify/react";
 import { useTranslations } from "next-intl";
+import { MockupTrackItem } from "./MockupTrackItem";
+import { CanvasElementTrackItem } from "./CanvasElementTrackItem";
+import type { TextElement } from "@/types/canvas-elements.types";
+import { getClipTimelineDuration } from "@/types/video-track.types";
 
 const DEFAULT_ZOOM_FRAGMENT_DURATION = 2;
+const EMPTY_TIMELINE_DURATION = 30;
+const MIN_TIMELINE_HEIGHT = 152;
+const MAX_TIMELINE_HEIGHT = 560;
 
 export function Timeline({
     videoDuration,
@@ -44,6 +51,14 @@ export function Timeline({
     selectedAudioTrackId,
     onSelectAudioTrack,
     onUpdateAudioTrack,
+    mockupActive = false,
+    mockupAnimation,
+    onUpdateMockupAnimation,
+    onActivateMockupTool,
+    canvasElements = [],
+    selectedCanvasElementId,
+    onSelectCanvasElement,
+    onUpdateCanvasElement,
 }: TimelineProps) {
     const t = useTranslations("timeline");
 
@@ -62,14 +77,47 @@ export function Timeline({
     const isSeekingRef = useRef<boolean>(false);
     const [isHoveringZoomRow, setIsHoveringZoomRow] = useState(false);
     const [ghostX, setGhostX] = useState(0);
+    const [timelineHeight, setTimelineHeight] = useState(230);
+    const [verticalScrollTop, setVerticalScrollTop] = useState(0);
+    const resizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
+    const textElements = useMemo(() => canvasElements.filter((element): element is TextElement => element.type === "text"), [canvasElements]);
     const validDuration = useMemo(() => {
         if (videoClips.length > 0) {
             // Total duration = end of last clip
-            const lastClipEnd = Math.max(...videoClips.map(c => c.startTime + (c.trimEnd - c.trimStart)));
+            const lastClipEnd = Math.max(...videoClips.map(c => c.startTime + getClipTimelineDuration(c)));
             return Number.isFinite(lastClipEnd) && lastClipEnd > 0 ? lastClipEnd : 0;
         }
-        return Number.isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
-    }, [videoDuration, videoClips]);
+        if (Number.isFinite(videoDuration) && videoDuration > 0) return videoDuration;
+        const textEnd = Math.max(0, ...textElements.map(element => element.endTime ?? 0));
+        const audioEnd = Math.max(0, ...audioTracks.map(track => track.startTime + track.duration));
+        const mockupEnd = mockupActive && mockupAnimation?.endTime ? mockupAnimation.endTime : 0;
+        return Math.max(EMPTY_TIMELINE_DURATION, textEnd, audioEnd, mockupEnd);
+    }, [videoDuration, videoClips, textElements, audioTracks, mockupActive, mockupAnimation]);
+
+    const hasMediaTimeline = videoClips.length > 0 || !!videoUrl;
+    const effectiveTrimStart = hasMediaTimeline ? trimRange.start : 0;
+    const effectiveTrimEnd = hasMediaTimeline && trimRange.end > 0 ? trimRange.end : validDuration;
+    const trackContentHeight = 22 + 48 + 48 + textElements.length * 32 + (mockupActive ? 32 : 0) + (audioTracks.length > 0 ? 20 : 0);
+
+    const beginTimelineResize = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        resizeRef.current = { pointerId: event.pointerId, startY: event.clientY, startHeight: timelineHeight };
+    }, [timelineHeight]);
+
+    const resizeTimeline = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        const resize = resizeRef.current;
+        if (!resize || resize.pointerId !== event.pointerId) return;
+        const nextHeight = resize.startHeight + (resize.startY - event.clientY);
+        setTimelineHeight(Math.max(MIN_TIMELINE_HEIGHT, Math.min(MAX_TIMELINE_HEIGHT, nextHeight)));
+    }, []);
+
+    const endTimelineResize = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        if (resizeRef.current?.pointerId !== event.pointerId) return;
+        resizeRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    }, []);
 
     const pendingTrimRef = useRef<{ start: number; end: number } | null>(null);
 
@@ -107,13 +155,13 @@ export function Timeline({
     // Calculate trim handle positions
     const trimStartPosition = useMemo(() => {
         if (validDuration === 0 || contentWidth === 0) return 0;
-        return (trimRange.start / validDuration) * contentWidth;
-    }, [trimRange.start, validDuration, contentWidth]);
+        return (effectiveTrimStart / validDuration) * contentWidth;
+    }, [effectiveTrimStart, validDuration, contentWidth]);
 
     const trimEndPosition = useMemo(() => {
         if (validDuration === 0 || contentWidth === 0) return contentWidth;
-        return (trimRange.end / validDuration) * contentWidth;
-    }, [trimRange.end, validDuration, contentWidth]);
+        return (effectiveTrimEnd / validDuration) * contentWidth;
+    }, [effectiveTrimEnd, validDuration, contentWidth]);
 
     // Update trim motion values when positions change
     useEffect(() => {
@@ -179,10 +227,10 @@ export function Timeline({
             const percentage = Math.max(0, Math.min(1, clickX / contentWidth));
             const newTime = percentage * validDuration;
             // Clamp to trim range
-            const clampedTime = Math.max(trimRange.start, Math.min(trimRange.end, newTime));
+            const clampedTime = Math.max(effectiveTrimStart, Math.min(effectiveTrimEnd, newTime));
             onSeek(clampedTime);
         }
-    }, [contentWidth, validDuration, onSeek, isDragging, isDraggingTrim, trimRange]);
+    }, [contentWidth, validDuration, onSeek, isDragging, isDraggingTrim, effectiveTrimStart, effectiveTrimEnd]);
 
     const handleDrag = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
         if (contentWidth === 0 || validDuration === 0) return;
@@ -319,23 +367,38 @@ export function Timeline({
     );
 
     return (
-        <div ref={containerRef} className="flex flex-col w-full pr-2">
-            <div className="h-38 shrink-0 bg-[#0D0D11] border-t border-white/10 flex flex-col font-mono text-[10px]">
+        <div ref={containerRef} className="relative flex w-full shrink-0 flex-col pr-2" style={{ height: timelineHeight }}>
+            <button
+                type="button"
+                aria-label="Resize timeline vertically"
+                title="Drag to resize timeline"
+                className="absolute -top-1 left-0 right-2 z-50 h-2 cursor-ns-resize group"
+                onPointerDown={beginTimelineResize}
+                onPointerMove={resizeTimeline}
+                onPointerUp={endTimelineResize}
+                onPointerCancel={endTimelineResize}
+            >
+                <span className="absolute left-1/2 top-0.5 h-1 w-16 -translate-x-1/2 rounded-full bg-white/15 transition-colors group-hover:bg-blue-400/80" />
+            </button>
+            <div className="h-full shrink-0 bg-[#0D0D11] border-t border-white/10 flex flex-col font-mono text-[10px]">
                 <div className="flex-1 flex flex-col relative overflow-hidden">
 
-                    <LabelSidebar audioTracksCount={audioTracks.length} />
+                    <LabelSidebar audioTracksCount={audioTracks.length} mockupActive={mockupActive} textLabels={textElements.map(element => element.content)} scrollTop={verticalScrollTop} contentHeight={Math.max(trackContentHeight, timelineHeight)} />
                     {/* Scrollable content */}
                     <div
                         ref={trackRef}
                         data-scrollable
-                        className="flex-1 flex flex-col overflow-x-auto overflow-y-hidden custom-scrollbar pl-14 pr-2"
+                        className="flex-1 flex flex-col overflow-auto custom-scrollbar pl-14 pr-2"
                         style={{ scrollBehavior: 'smooth' }}
+                        onScroll={(event) => setVerticalScrollTop(event.currentTarget.scrollTop)}
                     >
                         <div
-                            className="relative flex flex-col h-full"
+                            className="relative flex flex-col"
                             style={{
                                 width: contentWidth > 0 ? contentWidth : '100%',
-                                minWidth: '100%'
+                                minWidth: '100%',
+                                height: Math.max(trackContentHeight, timelineHeight),
+                                minHeight: trackContentHeight,
                             }}
                         >
                             {/* Playhead */}
@@ -344,8 +407,8 @@ export function Timeline({
                                 style={{ x: playheadX, translateX: "-50%" }}
                                 role="slider"
                                 aria-label={`Playhead at ${formatTime(currentTime)}`}
-                                aria-valuemin={videoClips.length > 0 ? 0 : trimRange.start}
-                                aria-valuemax={videoClips.length > 0 ? validDuration : trimRange.end}
+                                aria-valuemin={videoClips.length > 0 ? 0 : effectiveTrimStart}
+                                aria-valuemax={videoClips.length > 0 ? validDuration : effectiveTrimEnd}
                                 aria-valuenow={currentTime}
                                 tabIndex={0}
                                 drag="x"
@@ -401,7 +464,7 @@ export function Timeline({
                             <div className="flex-1 flex flex-col" onClick={handleTrackClick}>
 
                                 {/* Video track */}
-                                <div className="flex-1 flex items-center py-0.5 relative">
+                                <div className="h-12 shrink-0 flex items-center py-0.5 relative">
                                     <div
                                         className="h-full w-full rounded-md flex items-center relative bg-[#0a1510] border border-white/5"
                                     >
@@ -428,14 +491,19 @@ export function Timeline({
                                             </>
                                         ) : (
                                             <>
+                                                {!videoUrl && (
+                                                    <div className="absolute inset-0 flex items-center justify-center rounded-md border border-dashed border-emerald-500/20 bg-emerald-500/5 text-[10px] text-emerald-400/65">
+                                                        Empty canvas - {formatTime(validDuration)} editable timeline
+                                                    </div>
+                                                )}
                                                 {/* Legacy single video mode */}
-                                                {trimRange.start > 0 && (
+                                                {videoUrl && trimRange.start > 0 && (
                                                     <motion.div
                                                         className="absolute left-0 top-0 bottom-0 bg-black/60 rounded-l-md z-10"
                                                         style={{ width: trimOverlayLeftWidth }}
                                                     />
                                                 )}
-                                                {trimRange.end < validDuration && (
+                                                {videoUrl && trimRange.end < validDuration && (
                                                     <motion.div
                                                         className="absolute right-0 top-0 bottom-0 bg-black/60 rounded-r-md z-10"
                                                         style={{ left: trimOverlayRightLeft, width: trimOverlayRightWidth }}
@@ -443,7 +511,7 @@ export function Timeline({
                                                 )}
 
                                                 {/* Active clip region */}
-                                                <motion.div
+                                                {videoUrl && <motion.div
                                                     className="absolute top-0 bottom-0 rounded-md border border-[#34A853]/40 bg-[#182e20] overflow-hidden"
                                                     style={{ left: clipLeftMotion, width: clipWidthMotion }}
                                                 >
@@ -472,9 +540,9 @@ export function Timeline({
                                                     <motion.span className="flex items-center justify-center gap-2 text-emerald-400 text-[11px] font-medium ml-3 relative z-10 drop-shadow-sm h-full">
                                                         {trimmedDurationLabel}
                                                     </motion.span>
-                                                </motion.div>
+                                                </motion.div>}
                                                 {/* Trim Start Handle */}
-                                                <motion.div
+                                                {videoUrl && <motion.div
                                                     className="absolute top-0 bottom-0 w-3 cursor-ew-resize z-20 group/trim flex items-center justify-center"
                                                     style={{ x: trimStartX, translateX: "-50%" }}
                                                     role="slider"
@@ -492,10 +560,10 @@ export function Timeline({
                                                     onDragEnd={handleTrimDragEnd}
                                                 >
                                                     <div className={`w-1.5 h-8 rounded-full transition-all ${isDraggingTrim === 'start' ? 'bg-[#4ade80] scale-110' : 'bg-[#34A853] group-hover/trim:bg-[#4ade80]'}`} aria-hidden="true" />
-                                                </motion.div>
+                                                </motion.div>}
 
                                                 {/* Trim End Handle */}
-                                                <motion.div
+                                                {videoUrl && <motion.div
                                                     className="absolute top-0 bottom-0 w-3 cursor-ew-resize z-20 group/trim flex items-center justify-center"
                                                     style={{ x: trimEndX, translateX: "-50%" }}
                                                     role="slider"
@@ -513,7 +581,7 @@ export function Timeline({
                                                     onDragEnd={handleTrimDragEnd}
                                                 >
                                                     <div className={`w-1.5 h-8 rounded-full transition-all ${isDraggingTrim === 'end' ? 'bg-[#4ade80] scale-110' : 'bg-[#34A853] group-hover/trim:bg-[#4ade80]'}`} aria-hidden="true" />
-                                                </motion.div>
+                                                </motion.div>}
                                             </>
                                         )}
                                     </div>
@@ -521,7 +589,7 @@ export function Timeline({
 
                                 {/* Zoom track */}
                                 <div
-                                    className="flex-1 flex items-center relative"
+                                    className="h-12 shrink-0 flex items-center relative"
                                     onMouseMove={(e) => {
                                         if (isDraggingZoomFragment) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
@@ -621,6 +689,29 @@ export function Timeline({
                                         })()}
                                     </div>
                                 </div>
+
+                                {textElements.map((element) => (
+                                    <div key={element.id} className="h-8 shrink-0 flex items-center relative border-t border-white/5 bg-cyan-500/3">
+                                        <div className="h-full w-full relative">
+                                            <CanvasElementTrackItem
+                                                element={element}
+                                                contentWidth={contentWidth}
+                                                timelineDuration={validDuration}
+                                                isSelected={selectedCanvasElementId === element.id}
+                                                onSelect={() => onSelectCanvasElement?.(element.id)}
+                                                onUpdate={(updates) => onUpdateCanvasElement?.(element.id, updates)}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {mockupActive && mockupAnimation && onUpdateMockupAnimation && (
+                                    <div className="h-8 shrink-0 flex items-center relative border-t border-white/5 bg-violet-500/3">
+                                        <div className="h-full w-full relative">
+                                            <MockupTrackItem config={mockupAnimation} contentWidth={contentWidth} videoDuration={validDuration} currentTime={currentTime} onSeek={onSeek} onUpdate={onUpdateMockupAnimation} onSelect={onActivateMockupTool} />
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Audio track - only show if there are audio tracks */}
                                 {audioTracks.length > 0 && (

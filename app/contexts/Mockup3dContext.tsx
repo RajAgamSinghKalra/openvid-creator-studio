@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
+import { DEFAULT_MOCKUP_ANIMATION, type MockupAnimationConfig } from "@/types/mockup-animation.types";
 
 interface Mockup3dState {
   selectedTemplateId: string | null;
@@ -51,6 +52,8 @@ interface Mockup3dState {
   setImagePhoneShadowColor: (v: string) => void;
   imagePhoneRefWidth: number;
   setImagePhoneRefWidth: (v: number) => void;
+  imagePhoneAnimation: MockupAnimationConfig;
+  setImagePhoneAnimation: (v: MockupAnimationConfig | ((prev: MockupAnimationConfig) => MockupAnimationConfig)) => void;
 }
 
 const Mockup3dContext = createContext<Mockup3dState | null>(null);
@@ -74,6 +77,7 @@ export function Mockup3dProvider({ children }: { children: ReactNode }) {
   const [imagePhoneShadow, setImagePhoneShadow] = useState(0.6);
   const [imagePhoneShadowColor, setImagePhoneShadowColor] = useState("#000000");
   const [imagePhoneRefWidth, setImagePhoneRefWidth] = useState(0);
+  const [imagePhoneAnimation, setImagePhoneAnimation] = useState<MockupAnimationConfig>({ ...DEFAULT_MOCKUP_ANIMATION });
 
   return (
     <Mockup3dContext.Provider value={{
@@ -94,6 +98,7 @@ export function Mockup3dProvider({ children }: { children: ReactNode }) {
       imagePhoneShadow, setImagePhoneShadow,
       imagePhoneShadowColor, setImagePhoneShadowColor,
       imagePhoneRefWidth, setImagePhoneRefWidth,
+      imagePhoneAnimation, setImagePhoneAnimation,
     }}>
       {children}
     </Mockup3dContext.Provider>

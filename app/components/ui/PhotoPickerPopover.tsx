@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { fetchPhotosWithCache, fetchDiscoveryPhotos, type UnifiedPhoto } from "@/lib/photo-providers";
 import { TooltipAction } from "@/components/ui/tooltip-action";
 import { useTranslations } from "next-intl";
+import { isLocalOnlyBrowser } from "@/lib/local-mode";
 
 const SUGGESTION_BADGES = [
     { id: "blur gradient", key: "blur_gradient" },
@@ -116,6 +117,7 @@ function MasonryGrid({
 
 export function PhotoPickerPopover({ onSelect }: PhotoPickerPopoverProps) {
     const t = useTranslations("photoPicker");
+    const localMode = isLocalOnlyBrowser();
     const [open, setOpen] = useState(false);
     const [inputValue, setInputValue] = useState("");
     const [activeQuery, setActiveQuery] = useState("");
@@ -238,10 +240,10 @@ export function PhotoPickerPopover({ onSelect }: PhotoPickerPopoverProps) {
                         <div className="flex items-center gap-2">
                             <Icon icon="ph:images-bold" width="13" className="text-white/50" aria-hidden="true" />
                             <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/50">
-                                {t("title")}
+                                {localMode ? "Local background library" : t("title")}
                             </span>
                             <span className="ml-auto text-[10px] text-white/30">
-                                {isSearchMode ? `"${activeQuery}"` : t("statusDiscovering")}
+                                {isSearchMode ? `"${activeQuery}"` : localMode ? "On this computer" : t("statusDiscovering")}
                             </span>
                         </div>
                     </div>
@@ -295,6 +297,12 @@ export function PhotoPickerPopover({ onSelect }: PhotoPickerPopoverProps) {
                         )}
                     </div>
                     <div className="px-4 py-2.5 border-t border-white/10 bg-white/5 shrink-0">
+                        {localMode ? (
+                            <span className="flex items-center gap-1.5 text-[10px] text-emerald-300/70">
+                                <Icon icon="lucide:hard-drive" width="12" aria-hidden="true" />
+                                All images are served from localhost.
+                            </span>
+                        ) : (
                         <span className="text-[10px] text-white/30">
                             {t("footerPhotosBy")}{" "}
                             <a
@@ -324,6 +332,7 @@ export function PhotoPickerPopover({ onSelect }: PhotoPickerPopoverProps) {
                                 Pixabay
                             </a>
                         </span>
+                        )}
                     </div>
                 </div>
             </PopoverContent>

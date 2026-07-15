@@ -18,6 +18,8 @@ export interface UseVideoThumbnailsOptions {
     width?: number;
     progressive?: boolean;
     videoId?: string;
+    /** Pause background decoding while interactive playback needs the decoder. */
+    suspend?: boolean;
 }
 
 // Quality presets for thumbnail resolution
@@ -30,6 +32,17 @@ const QUALITY_PRESETS: Record<ThumbnailQuality, number | null> = {
 
 // Low quality preset for fast initial loading
 const LOW_QUALITY_WIDTH = 480;
+const PREVIEW_STATE_BATCH_SIZE = 6;
+
+function waitForPreviewIdle(timeout = 180): Promise<void> {
+    return new Promise((resolve) => {
+        if ("requestIdleCallback" in window) {
+            window.requestIdleCallback(() => resolve(), { timeout });
+        } else {
+            globalThis.setTimeout(resolve, 8);
+        }
+    });
+}
 
 export interface UseVideoThumbnailsReturn {
     thumbnails: VideoThumbnail[];
@@ -57,6 +70,7 @@ export function useVideoThumbnails(
         width: customWidth,
         progressive = true,
         videoId,
+        suspend = false,
     } = options;
 
     // Separate states for low and high quality thumbnails
@@ -66,7 +80,12 @@ export function useVideoThumbnails(
     const [progress, setProgress] = useState(0);
 
     const abortRef = useRef<boolean>(false);
+    const suspendRef = useRef<boolean>(suspend);
     const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+    useEffect(() => {
+        suspendRef.current = suspend;
+    }, [suspend]);
 
     // Merged thumbnails: prefer high quality, fallback to low quality
     const thumbnails = useMemo(() => {
@@ -114,6 +133,17 @@ export function useVideoThumbnails(
         for (let i = 0; i < numThumbnails; i++) {
             if (abortRef.current) break;
 
+            while (suspendRef.current && !abortRef.current) {
+                await new Promise(resolve => globalThis.setTimeout(resolve, 120));
+            }
+            if (abortRef.current) break;
+
+            // Thumbnail generation is useful background work, but seeking and
+            // serializing canvases can monopolize the main thread. Yield before
+            // every frame so playback, dragging and WebGL receive priority.
+            await waitForPreviewIdle(600);
+            if (abortRef.current) break;
+
             const time = Math.min(i * interval, videoDuration);
 
             video.currentTime = time;
@@ -137,16 +167,8 @@ export function useVideoThumbnails(
             };
             newThumbnails.push(thumb);
             onThumbnailGenerated(thumb);
-            onProgress(((i + 1) / numThumbnails) * 100);
-
-            if (i % 3 === 0) {
-                await new Promise<void>((resolve) => {
-                    if ("requestIdleCallback" in window) {
-                        requestIdleCallback(() => resolve(), { timeout: 16 });
-                    } else {
-                        setTimeout(resolve, 0);
-                    }
-                });
+            if ((i + 1) % PREVIEW_STATE_BATCH_SIZE === 0 || i === numThumbnails - 1) {
+                onProgress(((i + 1) / numThumbnails) * 100);
             }
         }
 
@@ -230,12 +252,19 @@ export function useVideoThumbnails(
                     (p) => setProgress(p * 0.3), // 0-30% for low quality
                     (thumb) => {
                         lowThumbs.push(thumb);
-                        setLowQualityThumbnails([...lowThumbs]);
+                        if (lowThumbs.length % PREVIEW_STATE_BATCH_SIZE === 0) {
+                            setLowQualityThumbnails([...lowThumbs]);
+                        }
                     }
                 );
+                if (lowThumbs.length > 0) setLowQualityThumbnails([...lowThumbs]);
             }
 
             if (abortRef.current) return;
+
+            // Let the low-resolution cache become interactive before starting
+            // the more expensive high-resolution pass.
+            await waitForPreviewIdle(350);
 
             const highThumbs: VideoThumbnail[] = [];
             await generateThumbnailsAtQuality(
@@ -245,11 +274,14 @@ export function useVideoThumbnails(
                 highQualityWidth,
                 duration,
                 (p) => setProgress(progressive ? 30 + p * 0.7 : p), // 30-100% or 0-100%
-                (thumb) => {
-                    highThumbs.push(thumb);
-                    setHighQualityThumbnails([...highThumbs]);
-                }
-            );
+                    (thumb) => {
+                        highThumbs.push(thumb);
+                        if (highThumbs.length % PREVIEW_STATE_BATCH_SIZE === 0) {
+                            setHighQualityThumbnails([...highThumbs]);
+                        }
+                    }
+                );
+            if (highThumbs.length > 0) setHighQualityThumbnails([...highThumbs]);
 
             if (!abortRef.current && highThumbs.length > 0 && videoId) {
                 try {

@@ -2,7 +2,7 @@
 import { Icon } from "@iconify/react";
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { saveUploadedVideo } from "@/lib/video-upload-cache";
+import { stageUploadedVideo } from "@/lib/video-upload-cache";
 import { saveUploadedImage } from "@/lib/image-upload-cache";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -26,7 +26,9 @@ export default function Hero({ onVideoUpload, onPhotoUpload }: HeroProps) {
             if (!file.type.startsWith("video/")) return;
             setIsUploadingVideo(true);
             try {
-                await saveUploadedVideo(file);
+                // Keep the original File in this tab and navigate immediately;
+                // the editor reads it directly without an IndexedDB copy.
+                await stageUploadedVideo(file);
                 if (onVideoUpload) {
                     onVideoUpload(file);
                 }

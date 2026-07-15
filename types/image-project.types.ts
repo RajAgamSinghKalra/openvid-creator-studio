@@ -1,7 +1,8 @@
-import type { BackgroundTab, BackgroundColorConfig, AspectRatio, CropArea } from "@/types";
+import type { BackgroundTab, BackgroundColorConfig, BackgroundVideoTransform, AspectRatio, CropArea } from "@/types";
 import type { MockupConfig } from "@/types/mockup.types";
 import { CanvasElement } from "./canvas-elements.types";
 import type { Preview3DConfig, ImageMaskConfig } from "./photo.types";
+import type { MockupAnimationConfig } from "./mockup-animation.types";
 
 export interface ImageProject {
     id: string;
@@ -16,6 +17,8 @@ export interface ImageProject {
     selectedWallpaper: number;
     backgroundBlur: number;
     selectedImageUrl: string;
+    selectedBackgroundVideoId: string;
+    backgroundVideoTransform: BackgroundVideoTransform;
     backgroundColorConfig: BackgroundColorConfig | null;
 
     padding: number;
@@ -35,6 +38,7 @@ export interface ImageProject {
         rotation: number;
         translateX: number;
         translateY: number;
+        scale?: number;
     };
 
     imagePreview3D: Preview3DConfig;
@@ -56,6 +60,7 @@ export interface ImageProject {
     imagePhoneShadow: number;
     imagePhoneShadowColor: string;
     imagePhoneRefWidth: number;
+    imagePhoneAnimation?: MockupAnimationConfig;
     createdAt: number;
 }
 

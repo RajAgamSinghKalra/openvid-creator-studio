@@ -11,18 +11,21 @@ import {
     setCurrentProjectId,
     getCurrentProjectId,
 } from "@/lib/image-projects-cache";
-import type { BackgroundTab, BackgroundColorConfig, AspectRatio, CropArea } from "@/types";
+import { DEFAULT_BACKGROUND_VIDEO_TRANSFORM, type BackgroundTab, type BackgroundColorConfig, type BackgroundVideoTransform, type AspectRatio, type CropArea } from "@/types";
 import type { CanvasElement } from "@/types/canvas-elements.types";
 import type { MockupConfig } from "@/types/mockup.types";
 import type { Preview3DConfig, ImageMaskConfig } from "@/types/photo.types";
 import { DEFAULT_MOCKUP_CONFIG } from "@/types/mockup.types";
 import { DEFAULT_MASK_CONFIG, PREVIEW_CONFIGS } from "@/types/photo.types";
+import { DEFAULT_MOCKUP_ANIMATION, type MockupAnimationConfig } from "@/types/mockup-animation.types";
 
 interface ImageProjectState {
     backgroundTab: BackgroundTab;
     selectedWallpaper: number;
     backgroundBlur: number;
     selectedImageUrl: string;
+    selectedBackgroundVideoId: string;
+    backgroundVideoTransform: BackgroundVideoTransform;
     backgroundColorConfig: BackgroundColorConfig | null;
     padding: number;
     roundedCorners: number;
@@ -37,6 +40,7 @@ interface ImageProjectState {
         rotation: number;
         translateX: number;
         translateY: number;
+        scale: number;
     };
     imagePreview3D: Preview3DConfig;
     apply3DToBackground: boolean;
@@ -56,6 +60,7 @@ interface ImageProjectState {
     imagePhoneShadow: number;
     imagePhoneShadowColor: string;
     imagePhoneRefWidth: number;
+    imagePhoneAnimation: MockupAnimationConfig;
 }
 
 const DEFAULT_PROJECT_STATE: ImageProjectState = {
@@ -63,6 +68,8 @@ const DEFAULT_PROJECT_STATE: ImageProjectState = {
     selectedWallpaper: 0,
     backgroundBlur: 0,
     selectedImageUrl: "",
+    selectedBackgroundVideoId: "",
+    backgroundVideoTransform: { ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM },
     backgroundColorConfig: null,
     padding: 10,
     roundedCorners: 10,
@@ -77,6 +84,7 @@ const DEFAULT_PROJECT_STATE: ImageProjectState = {
         rotation: 0,
         translateX: 0,
         translateY: 0,
+        scale: 1,
     },
     imagePreview3D: PREVIEW_CONFIGS[0],
     apply3DToBackground: false,
@@ -96,6 +104,7 @@ const DEFAULT_PROJECT_STATE: ImageProjectState = {
     imagePhoneShadow: 0.6,
     imagePhoneShadowColor: "#000000",
     imagePhoneRefWidth: 0,
+    imagePhoneAnimation: { ...DEFAULT_MOCKUP_ANIMATION },
 };
 
 export function useImageProjects() {

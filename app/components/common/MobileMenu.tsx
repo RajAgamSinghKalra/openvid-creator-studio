@@ -14,7 +14,7 @@ export function MobileMenu() {
   const t = useTranslations('header');
   const [isOpen, setIsOpen] = useState(false);
   const [hasCachedVideo, setHasCachedVideo] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, signOut, localMode } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const [isMounted, setIsMounted] = useState(false);
@@ -142,7 +142,14 @@ export function MobileMenu() {
           </nav>
 
           <div className="p-4 border-t border-white/5">
-            {user ? (
+            {localMode ? (
+              <Button variant="primary" asChild className="w-full">
+                <Link href="/editor" onClick={closeMenu} className="flex items-center justify-center gap-2">
+                  <Icon icon="lucide:hard-drive" className="size-5" aria-hidden="true" />
+                  Local editor
+                </Link>
+              </Button>
+            ) : user ? (
               <button
                 onClick={handleSignOut}
                 disabled={isLoggingOut}

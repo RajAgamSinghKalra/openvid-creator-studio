@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import createIntlMiddleware from 'next-intl/middleware';
 import { locales, defaultLocale } from './i18n';
 import { updateSession } from "@/utils/supabase/middleware";
+import { LOCAL_ONLY_DEFAULT, isLocalHostname } from "@/lib/local-mode";
 
 const intlMiddleware = createIntlMiddleware({
   locales,
@@ -16,10 +17,15 @@ export default async function proxy(request: NextRequest) {
   const intlResponse = intlMiddleware(request);
   intlResponse.headers.set('x-user-country', country);
 
-   const supabaseResponse = await updateSession(request);
-  supabaseResponse.cookies.getAll().forEach((cookie) => {
-    intlResponse.cookies.set(cookie.name, cookie.value);
-  });
+  const localOnly = LOCAL_ONLY_DEFAULT || isLocalHostname(request.nextUrl.hostname);
+  if (!localOnly) {
+    const supabaseResponse = await updateSession(request);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      intlResponse.cookies.set(cookie.name, cookie.value);
+    });
+  }
+
+  intlResponse.headers.set('x-openvid-storage', localOnly ? 'local-only' : 'hosted');
 
   return intlResponse;
 }

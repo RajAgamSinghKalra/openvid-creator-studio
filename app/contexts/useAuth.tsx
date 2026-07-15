@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import { isLocalOnlyBrowser, LOCAL_ONLY_DEFAULT } from "@/lib/local-mode";
 
 export interface UserProfile {
   id: string;
@@ -21,6 +22,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   session: Session | null;
   loading: boolean;
+  localMode: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -28,13 +30,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // This initial value is identical during SSR and the first client render.
+  // Hostname-based localhost detection happens after hydration so React/Radix
+  // see exactly the same component tree and generate matching IDs.
+  const [localMode, setLocalMode] = useState(LOCAL_ONLY_DEFAULT);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const [loading, setLoading] = useState(!LOCAL_ONLY_DEFAULT);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   const fetchProfile = useCallback(async (userId: string) => {
+    const supabase = supabaseRef.current;
+    if (!supabase) return null;
+
     try {
       const { data, error } = await supabase
         .from("user_profiles")
@@ -52,17 +61,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Error fetching profile:", error);
       return null;
     }
-  }, [supabase]);
-
-  const refreshProfile = async () => {
-    if (user) {
-      const profileData = await fetchProfile(user.id);
-      setProfile(profileData);
-    }
-  };
+  }, []);
 
   useEffect(() => {
+    const browserLocalMode = isLocalOnlyBrowser();
     let mounted = true;
+
+    if (browserLocalMode) {
+      // In production, localhost is only knowable in the browser. Defer the
+      // transition until after the hydration commit has completed.
+      if (!LOCAL_ONLY_DEFAULT) {
+        queueMicrotask(() => {
+          if (!mounted) return;
+          setLocalMode(true);
+          setLoading(false);
+        });
+      }
+      return () => {
+        mounted = false;
+      };
+    }
+
+    let supabase: SupabaseClient;
+
+    try {
+      supabase = createClient();
+      supabaseRef.current = supabase;
+    } catch (error) {
+      console.error("Error initializing auth:", error);
+      queueMicrotask(() => {
+        if (mounted) setLoading(false);
+      });
+      return () => {
+        mounted = false;
+      };
+    }
 
     const initializeAuth = async () => {
       try {
@@ -71,16 +104,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = await supabase.auth.getSession();
 
         if (!mounted) return;
-
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         setLoading(false);
 
         if (initialSession?.user) {
           const profileData = await fetchProfile(initialSession.user.id);
-          if (mounted) {
-            setProfile(profileData);
-          }
+          if (mounted) setProfile(profileData);
         }
       } catch (error) {
         console.error("Error initializing auth:", error);
@@ -88,41 +118,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    initializeAuth();
+    void initializeAuth();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event: AuthChangeEvent, newSession: Session | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!mounted) return;
       setSession(newSession);
       setUser(newSession?.user ?? null);
 
       if (newSession?.user) {
-        fetchProfile(newSession.user.id).then((profileData) => {
-          if (mounted) setProfile(profileData);
-        });
+        const profileData = await fetchProfile(newSession.user.id);
+        if (mounted) setProfile(profileData);
       } else {
         setProfile(null);
       }
-      
+
       setLoading(false);
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      supabaseRef.current = null;
     };
-  }, [supabase, fetchProfile]);
+  }, [fetchProfile]);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    const profileData = await fetchProfile(user.id);
+    setProfile(profileData);
+  }, [fetchProfile, user]);
+
+  const signOut = useCallback(async () => {
+    await supabaseRef.current?.auth.signOut();
     setUser(null);
     setProfile(null);
     setSession(null);
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, session, loading, signOut, refreshProfile }}
+      value={{ user, profile, session, loading, localMode, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>

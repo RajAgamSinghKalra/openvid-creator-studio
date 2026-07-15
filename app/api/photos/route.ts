@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/app/config/env";
+import { LOCAL_ONLY_DEFAULT, isLocalHostname } from "@/lib/local-mode";
+import { WALLPAPER_CATEGORIES } from "@/lib/wallpaper.catalog";
 
 export interface UnifiedPhoto {
     id: string;
@@ -13,6 +15,18 @@ export interface UnifiedPhoto {
 
 type Provider = "unsplash" | "pexels" | "pixabay";
 const PROVIDERS: Provider[] = ["unsplash", "pexels", "pixabay"];
+
+const LOCAL_PHOTOS: UnifiedPhoto[] = WALLPAPER_CATEGORIES.flatMap((category) =>
+    category.items.map((item) => ({
+        id: `local-${item.filename}`,
+        urls: { regular: item.fullUrl, small: item.previewUrl },
+        alt: `${category.label} ${item.filename}`,
+        photographer: "Local OpenVid library",
+        color: "#18181b",
+        width: 1920,
+        height: 1080,
+    }))
+);
 
 let providerIndex = 0;
 function getNextProvider(): Provider {
@@ -189,11 +203,22 @@ async function getSearch(query: string, page: number, perPage: number): Promise<
 }
 
 export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
+    const requestUrl = new URL(request.url);
+    const { searchParams } = requestUrl;
     const mode = searchParams.get("mode") ?? "search";
     const query = searchParams.get("q") ?? "";
     const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
     const perPage = Math.min(50, Math.max(1, Number(searchParams.get("perPage") ?? "20") || 20));
+
+    if (LOCAL_ONLY_DEFAULT || isLocalHostname(requestUrl.hostname)) {
+        const start = (page - 1) * perPage;
+        const normalizedQuery = query.trim().toLowerCase();
+        const matching = normalizedQuery
+            ? LOCAL_PHOTOS.filter((photo) => photo.alt.toLowerCase().includes(normalizedQuery))
+            : LOCAL_PHOTOS;
+        const source = matching.length > 0 ? matching : LOCAL_PHOTOS;
+        return NextResponse.json({ photos: source.slice(start, start + perPage) });
+    }
 
     if (mode === "discovery") {
         const photos = await getDiscovery();

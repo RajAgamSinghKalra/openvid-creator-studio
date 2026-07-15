@@ -35,6 +35,10 @@ interface EditorTopBarProps {
     imageExportProgress?: ImageExportProgress;
     canvasWidth?: number;
     canvasHeight?: number;
+    onSaveProject?: () => void;
+    onOpenProjects?: () => void;
+    projectName?: string;
+    isSavingProject?: boolean;
 }
 
 export function EditorTopBar({
@@ -50,12 +54,16 @@ export function EditorTopBar({
     imageExportProgress,
     canvasWidth = 1920,
     canvasHeight = 1080,
+    onSaveProject,
+    onOpenProjects,
+    projectName,
+    isSavingProject = false,
 }: EditorTopBarProps) {
     const isPhotoMode = editorMode === "photo";
     const t = useTranslations("editor.topBar");
     const [showAlert, setShowAlert] = useState(false);
     const [prevStatus, setPrevStatus] = useState<string>(exportProgress.status);
-    const { user, profile, signOut, loading } = useAuth();
+    const { user, profile, signOut, loading, localMode } = useAuth();
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     const handleSignOut = async () => {
@@ -82,7 +90,7 @@ export function EditorTopBar({
         profile?.avatar_url ||
         meta.avatar_url ||
         meta.picture ||
-        `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`;
+        "/images/metadata/favicon.svg";
 
     const provider = profile?.provider || meta.provider || "email";
 
@@ -133,6 +141,18 @@ export function EditorTopBar({
             <div className="flex-1"></div>
 
             <div className="flex items-center ml-auto">
+                {!isPhotoMode && (
+                    <div className="mr-3 flex items-center gap-1.5 border-r border-white/10 pr-3">
+                        <button type="button" onClick={onOpenProjects} className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[11px] text-white/60 hover:bg-white/7 hover:text-white" title="Open local projects">
+                            <Icon icon="lucide:folder-open" width="14" />
+                            <span className="hidden lg:inline max-w-28 truncate">{projectName || "Projects"}</span>
+                        </button>
+                        <button type="button" onClick={onSaveProject} disabled={isSavingProject} className="flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:opacity-50" title="Save project locally">
+                            <Icon icon={isSavingProject ? "lucide:loader-circle" : "lucide:save"} width="14" className={isSavingProject ? "animate-spin" : ""} />
+                            <span className="hidden sm:inline">{isSavingProject ? "Saving…" : "Save"}</span>
+                        </button>
+                    </div>
+                )}
                 <div className="flex items-center gap-2 border-r border-white/10 pr-3">
                     <TooltipAction label={canUndo ? t("history.undo") : t("history.noUndo")}>
                         <button
@@ -179,6 +199,11 @@ export function EditorTopBar({
                             <div className="w-24 h-2 bg-white/10 rounded-sm animate-pulse"></div>
                         </div>
                         <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse border border-white/10 shrink-0"></div>
+                    </div>
+                ) : localMode ? (
+                    <div className="ml-2 flex h-8 items-center gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/8 px-2.5 text-[11px] font-medium text-emerald-300" title="Media and projects stay in this browser on this computer">
+                        <Icon icon="lucide:hard-drive" width="14" aria-hidden="true" />
+                        <span className="hidden sm:inline">Local only</span>
                     </div>
                 ) : !user ? (
                     <div className="pl-2 flex items-center h-8">

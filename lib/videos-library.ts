@@ -5,26 +5,9 @@ const DB_VERSION = 3;
 const STORE_NAME = "uploaded-videos";
 
 let dbInstance: IDBDatabase | null = null;
-
-async function cleanupOldLibraryEntries(db: IDBDatabase): Promise<void> {
-    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - SIXTY_DAYS_MS;
-    return new Promise((resolve) => {
-        try {
-            const transaction = db.transaction(STORE_NAME, "readwrite");
-            const store = transaction.objectStore(STORE_NAME);
-            const index = store.index("uploadedAt");
-            const range = IDBKeyRange.upperBound(cutoff);
-            const request = index.openCursor(range);
-            request.onsuccess = (event) => {
-                const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
-                if (cursor) { cursor.delete(); cursor.continue(); }
-            };
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => resolve();
-        } catch { resolve(); }
-    });
-}
+// Session videos keep the original File object by reference. They are readable
+// by the editor/exporter but are never written back to or duplicated on disk.
+const sessionVideos = new Map<string, LibraryVideo>();
 
 function generateVideoId(): string {
     return `uploaded_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -39,7 +22,6 @@ async function openDB(): Promise<IDBDatabase> {
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
             dbInstance = request.result;
-            cleanupOldLibraryEntries(dbInstance).catch(() => {});
             resolve(request.result);
         };
 
@@ -54,6 +36,11 @@ async function openDB(): Promise<IDBDatabase> {
 }
 
 export async function findExistingVideo(fileName: string, fileSize: number): Promise<LibraryVideo | null> {
+    const sessionMatch = Array.from(sessionVideos.values()).find(
+        (video) => video.fileName === fileName && video.fileSize === fileSize
+    );
+    if (sessionMatch) return sessionMatch;
+
     const db = await openDB();
 
     return new Promise((resolve, reject) => {
@@ -193,6 +180,47 @@ export async function addVideoToLibrary(file: File): Promise<LibraryVideo> {
     });
 }
 
+export async function addVideoToSessionLibrary(
+    file: File,
+    knownMetadata?: { duration: number; width: number; height: number; aspectRatio?: string }
+): Promise<LibraryVideo> {
+    const metadata = knownMetadata ?? await getVideoMetadata(file);
+    const id = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const video: LibraryVideo = {
+        id,
+        blob: file,
+        fileName: file.name,
+        fileSize: file.size,
+        duration: metadata.duration,
+        width: metadata.width,
+        height: metadata.height,
+        aspectRatio: metadata.aspectRatio ?? "auto",
+        uploadedAt: Date.now(),
+        // Conservatively retain source audio until lightweight detection
+        // finishes; this matches the previous behavior for large files.
+        hasAudio: true,
+        originalHasAudio: true,
+    };
+
+    sessionVideos.set(id, video);
+
+    void Promise.all([
+        generateThumbnail(file).catch(() => undefined),
+        detectVideoHasAudio(file).catch(() => true),
+    ]).then(([thumbnailUrl, hasAudio]) => {
+        const current = sessionVideos.get(id);
+        if (!current) return;
+        sessionVideos.set(id, {
+            ...current,
+            thumbnailUrl,
+            hasAudio,
+            originalHasAudio: hasAudio,
+        });
+    });
+
+    return video;
+}
+
 export interface AddVideoWithMetadataOptions {
     blob: Blob;
     fileName: string;
@@ -264,7 +292,10 @@ export async function getAllLibraryVideos(): Promise<LibraryVideo[]> {
                 videos.push(cursor.value);
                 cursor.continue();
             } else {
-                resolve(videos);
+                resolve(
+                    [...sessionVideos.values(), ...videos]
+                        .sort((a, b) => b.uploadedAt - a.uploadedAt)
+                );
             }
         };
 
@@ -279,6 +310,9 @@ export async function getLibraryVideoInfoList(): Promise<LibraryVideoInfo[]> {
 }
 
 export async function getLibraryVideo(id: string): Promise<LibraryVideo | null> {
+    const sessionVideo = sessionVideos.get(id);
+    if (sessionVideo) return sessionVideo;
+
     const db = await openDB();
 
     return new Promise((resolve, reject) => {
@@ -288,6 +322,21 @@ export async function getLibraryVideo(id: string): Promise<LibraryVideo | null> 
 
         request.onerror = () => reject(request.error);
         request.onsuccess = () => resolve(request.result || null);
+    });
+}
+
+/** Persist instant/session uploads only when a project is explicitly saved. */
+export async function persistLibraryVideos(ids: string[]): Promise<void> {
+    const videos = ids.map(id => sessionVideos.get(id)).filter((video): video is LibraryVideo => !!video);
+    if (videos.length === 0) return;
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        for (const video of videos) store.put(video);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
     });
 }
 
@@ -357,6 +406,8 @@ export async function detectVideoHasAudio(blob: Blob): Promise<boolean> {
 }
 
 export async function deleteLibraryVideo(id: string): Promise<void> {
+    if (sessionVideos.delete(id)) return;
+
     const db = await openDB();
 
     return new Promise((resolve, reject) => {
@@ -370,6 +421,12 @@ export async function deleteLibraryVideo(id: string): Promise<void> {
 }
 
 export async function updateVideoAudioState(id: string, hasAudio: boolean): Promise<void> {
+    const sessionVideo = sessionVideos.get(id);
+    if (sessionVideo) {
+        sessionVideos.set(id, { ...sessionVideo, hasAudio });
+        return;
+    }
+
     const db = await openDB();
     const video = await getLibraryVideo(id);
     
@@ -393,6 +450,7 @@ export async function updateVideoAudioState(id: string, hasAudio: boolean): Prom
 }
 
 export async function clearLibrary(): Promise<void> {
+    sessionVideos.clear();
     const db = await openDB();
 
     return new Promise((resolve, reject) => {
@@ -414,7 +472,7 @@ export async function getLibraryVideoCount(): Promise<number> {
         const request = store.count();
 
         request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => resolve(request.result + sessionVideos.size);
     });
 }
 

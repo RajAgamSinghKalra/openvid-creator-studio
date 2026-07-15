@@ -37,6 +37,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export interface Laptop3DApi {
   renderAt: (width: number, height: number) => void;
   restorePreview: () => void;
+  setRotation: (rx: number, ry: number, rz: number) => void;
   hasBuiltInShadow: boolean;
 }
 
@@ -62,6 +63,8 @@ interface Props {
   environment?: EnvironmentPreset;
   isHovered: boolean;
   isSelected: boolean;
+  isPlaying?: boolean;
+  previewDpr?: number;
 }
 
 let gltfCachePromise: Promise<THREE.Group> | null = null;
@@ -95,6 +98,7 @@ function ModelScene({
   onApi,
   onLoaded,
   videoElement,
+  previewDpr = 3,
   autoRotate = false,
   rotationSpeed = 3.5,
   glow = 1.0,
@@ -123,6 +127,21 @@ function ModelScene({
       videoTextureRef.current.needsUpdate = true;
     }
   });
+
+  useEffect(() => {
+    if (!videoElement) return;
+    const invalidateVideoFrame = () => {
+      if (videoTextureRef.current) videoTextureRef.current.needsUpdate = true;
+      invalidate();
+    };
+    videoElement.addEventListener("seeked", invalidateVideoFrame);
+    videoElement.addEventListener("loadeddata", invalidateVideoFrame);
+    invalidateVideoFrame();
+    return () => {
+      videoElement.removeEventListener("seeked", invalidateVideoFrame);
+      videoElement.removeEventListener("loadeddata", invalidateVideoFrame);
+    };
+  }, [videoElement, invalidate]);
 
   useEffect(() => {
     const capturedOnApi = onApiRef.current;
@@ -156,8 +175,18 @@ function ModelScene({
         (cam as THREE.PerspectiveCamera).aspect = freshW / freshH;
         (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
 
-        gl.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1);
+        gl.setPixelRatio(previewDpr);
         gl.setSize(freshW, freshH, false);
+        invalidate();
+      },
+      setRotation: (rx, ry, rz) => {
+        const orbit = orbitRef.current;
+        if (orbit) {
+          const radius = orbit.object.position.distanceTo(orbit.target) || 1.5;
+          orbit.object.position.setFromSphericalCoords(radius, Math.PI / 2 - rx * DEG, ry * DEG).add(orbit.target);
+          orbit.update();
+        }
+        if (rootRef.current) rootRef.current.rotation.z = rz * DEG;
         invalidate();
       },
       hasBuiltInShadow: true,
@@ -165,7 +194,7 @@ function ModelScene({
 
     capturedOnApi?.(api);
     return () => capturedOnApi?.(null);
-  }, [gl, scene, camera, cameraRef, invalidate]);
+  }, [gl, scene, camera, cameraRef, rootRef, invalidate, previewDpr]);
 
   const applyTexture = useCallback(() => {
     if (videoElement) return;
@@ -554,8 +583,8 @@ function CanvasWithLoader(
           preserveDrawingBuffer: true,
           powerPreference: "high-performance",
         }}
-        dpr={3}
-        frameloop={props.videoElement ? "always" : "demand"}
+        dpr={props.previewDpr ?? 3}
+        frameloop={(props.videoElement && props.isPlaying) || props.autoRotate ? "always" : "demand"}
         resize={{ scroll: false, debounce: { scroll: 0, resize: 0 } }}
         onCreated={({ gl }) => {
           gl.setClearColor(0x000000, 0);

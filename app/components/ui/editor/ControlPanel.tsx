@@ -30,6 +30,7 @@ import { DEFAULT_CURSOR_CONFIG } from "@/types/cursor.types";
 import { CameraMenu } from "./CameraMenu";
 
 const ImageRecentBackgroundGrid = lazy(() => import("../ImageRecentBackgroundGrid").then(mod => ({ default: mod.ImageRecentBackgroundGrid })));
+const VideoRecentBackgroundGrid = lazy(() => import("../VideoRecentBackgroundGrid").then(mod => ({ default: mod.VideoRecentBackgroundGrid })));
 const BackgroundColorEditor = lazy(() => import("../BackgroundColorEditor").then(mod => ({ default: mod.BackgroundColorEditor })));
 const ZoomFragmentEditor = lazy(() => import("./ZoomFragmentEditor").then(mod => ({ default: mod.ZoomFragmentEditor })));
 const ZoomGlobalConfig = lazy(() => import("./ZoomGlobalConfig").then(mod => ({ default: mod.ZoomGlobalConfig })));
@@ -54,8 +55,13 @@ export function ControlPanel({
     padding,
     roundedCorners,
     shadows,
+    aspectRatio,
+    onAspectRatioChange,
     uploadedImages,
     selectedImageUrl,
+    uploadedBackgroundVideos,
+    selectedBackgroundVideoId,
+    backgroundVideoTransform,
     backgroundColorConfig,
     backgroundColorCss,
     onBackgroundTabChange,
@@ -69,6 +75,10 @@ export function ControlPanel({
     onImageUpload,
     onImageSelect,
     onImageRemove,
+    onBackgroundVideoUpload,
+    onBackgroundVideoSelect,
+    onBackgroundVideoRemove,
+    onBackgroundVideoTransformReset,
     onBackgroundColorChange,
     onTogglePanel,
     elementsTextTabTrigger = 0,
@@ -192,6 +202,11 @@ export function ControlPanel({
                                     isActive={backgroundTab === "image"}
                                     onClick={() => onBackgroundTabChange("image")}
                                 />
+                                <TabButton
+                                    label="Video"
+                                    isActive={backgroundTab === "video"}
+                                    onClick={() => onBackgroundTabChange("video")}
+                                />
                             </div>
                         </div>
 
@@ -234,6 +249,20 @@ export function ControlPanel({
                                         onSelect={onImageSelect}
                                         onRemove={onImageRemove}
                                         onUpload={onImageUpload}
+                                    />
+                                </Suspense>
+                            )}
+
+                            {backgroundTab === "video" && (
+                                <Suspense fallback={<ImageBackgroundSkeleton />}>
+                                    <VideoRecentBackgroundGrid
+                                        videos={uploadedBackgroundVideos}
+                                        selectedId={selectedBackgroundVideoId}
+                                        transform={backgroundVideoTransform}
+                                        onSelect={onBackgroundVideoSelect}
+                                        onRemove={onBackgroundVideoRemove}
+                                        onUpload={onBackgroundVideoUpload}
+                                        onResetTransform={onBackgroundVideoTransformReset}
                                     />
                                 </Suspense>
                             )}
@@ -294,6 +323,10 @@ export function ControlPanel({
                             backgroundColorCss={backgroundColorCss}
                             initialPage={initialMockupMenuPage}
                             mediaType={mediaType}
+                            aspectRatio={aspectRatio}
+                            onAspectRatioChange={onAspectRatioChange}
+                            currentTime={currentTime}
+                            videoDuration={videoDuration}
                         />
                     </Suspense>
                 )}

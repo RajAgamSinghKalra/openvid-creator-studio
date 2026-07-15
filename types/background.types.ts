@@ -25,6 +25,30 @@ export interface SolidColor {
 export type BackgroundColorConfig = { type: "gradient"; config: GradientConfig }
     | { type: "solid"; config: SolidColor }
 
+export interface BackgroundVideoItem {
+    id: string;
+    url: string;
+    name: string;
+    duration: number;
+    type: string;
+}
+
+export interface BackgroundVideoTransform {
+    /** Center position as a percentage of the canvas. */
+    x: number;
+    y: number;
+    /** Bounding-box size as a percentage of the canvas. */
+    width: number;
+    height: number;
+}
+
+export const DEFAULT_BACKGROUND_VIDEO_TRANSFORM: BackgroundVideoTransform = {
+    x: 50,
+    y: 50,
+    width: 100,
+    height: 100,
+};
+
 export const PRESET_SOLID_COLORS = [
     "#8D8D8D", "#ef4444", "#f59e0b", "#10b981",
     "#3b82f6", "#8b5cf6", "#ec4899", "#ffffff",

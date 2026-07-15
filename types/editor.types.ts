@@ -1,10 +1,11 @@
 import type { ZoomFragment } from "./zoom.types";
 import type { CanvasElement } from "./canvas-elements.types";
 import type { CursorConfig, CursorRecordingData } from "./cursor.types";
+import type { BackgroundVideoTransform } from "./background.types";
 
 export type Tool = "screenshot" | "elements" | "audio" | "zoom" | "mockup" | "cursor" | "video" | "camera" | "history" | "motion";
 
-export type BackgroundTab = "wallpaper" | "image" | "color";
+export type BackgroundTab = "wallpaper" | "image" | "video" | "color";
 
 export type AspectRatio = "auto" | "16:9" | "9:16" | "1:1" | "4:3" | "3:4" | "custom";
 
@@ -19,6 +20,7 @@ export interface VideoTransform {
     rotation: number;
     translateX: number;
     translateY: number;
+    scale: number;
 }
 
 export const ASPECT_RATIO_DIMENSIONS: Record<AspectRatio, { width: number; height: number } | null> = {
@@ -88,6 +90,9 @@ export interface VideoCanvasProps {
     selectedWallpaper?: number;
     backgroundBlur?: number;
     selectedImageUrl?: string;
+    selectedBackgroundVideoUrl?: string;
+    backgroundVideoTransform?: BackgroundVideoTransform;
+    onBackgroundVideoTransformChange?: (transform: BackgroundVideoTransform) => void;
     unsplashOverrideUrl?: string;
     backgroundColorCss?: string;
     onTimeUpdate: () => void;
@@ -122,6 +127,7 @@ export interface VideoCanvasProps {
     onTextToolDeactivate?: () => void;
     onAddElement?: (element: CanvasElement) => void;
     isPlaying?: boolean;
+    previewQuality?: import("./player-control.types").PreviewQuality;
     onMockupClick?: (kind: "2d" | "3d") => void;
     isRestoringProjectRef?: React.MutableRefObject<boolean>;
 }

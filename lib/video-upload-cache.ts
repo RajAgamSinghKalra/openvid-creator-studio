@@ -16,6 +16,7 @@ export interface CachedUploadedVideo {
 }
 
 let dbInstance: IDBDatabase | null = null;
+let stagedUploadedVideo: CachedUploadedVideo | null = null;
 
 async function cleanupOldUploadCache(db: IDBDatabase): Promise<void> {
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -67,12 +68,14 @@ function calculateAspectRatio(width: number, height: number): string {
     return `${width / divisor}/${height / divisor}`;
 }
 
-async function getVideoMetadata(file: File): Promise<{
+export interface VideoFileMetadata {
     duration: number;
     width: number;
     height: number;
     aspectRatio: string;
-}> {
+}
+
+export async function getVideoMetadata(file: File): Promise<VideoFileMetadata> {
     return new Promise((resolve, reject) => {
         const video = document.createElement("video");
         video.preload = "metadata";
@@ -98,11 +101,31 @@ async function getVideoMetadata(file: File): Promise<{
     });
 }
 
-export async function saveUploadedVideo(file: File): Promise<CachedUploadedVideo> {
+/**
+ * Passes a locally selected file between client routes without copying it into
+ * IndexedDB. The File remains read-only and valid for the current tab session.
+ */
+export async function stageUploadedVideo(file: File): Promise<CachedUploadedVideo> {
+    const metadata = await getVideoMetadata(file);
+    stagedUploadedVideo = {
+        key: SINGLE_VIDEO_KEY,
+        blob: file,
+        fileName: file.name,
+        fileSize: file.size,
+        duration: metadata.duration,
+        width: metadata.width,
+        height: metadata.height,
+        aspectRatio: metadata.aspectRatio,
+        uploadedAt: Date.now(),
+    };
+    return stagedUploadedVideo;
+}
+
+export async function saveUploadedVideo(file: File, knownMetadata?: VideoFileMetadata): Promise<CachedUploadedVideo> {
     try {
         const db = await openDB();
         
-        const metadata = await getVideoMetadata(file);
+        const metadata = knownMetadata ?? await getVideoMetadata(file);
         
         const data: CachedUploadedVideo = {
             key: SINGLE_VIDEO_KEY,
@@ -132,6 +155,8 @@ export async function saveUploadedVideo(file: File): Promise<CachedUploadedVideo
 }
 
 export async function getUploadedVideo(): Promise<CachedUploadedVideo | null> {
+    if (stagedUploadedVideo) return stagedUploadedVideo;
+
     try {
         const db = await openDB();
 
@@ -153,6 +178,7 @@ export async function getUploadedVideo(): Promise<CachedUploadedVideo | null> {
 }
 
 export async function deleteUploadedVideo(): Promise<void> {
+    stagedUploadedVideo = null;
     try {
         const db = await openDB();
 

@@ -3,6 +3,97 @@ import { RotationHandleIcon } from "@/components/ui/RotationHandleIcon";
 import { Corner, VIDEO_Z_INDEX, getNearestCorner, getCornerStyle } from "@/lib";
 import { CanvasElement, SvgElement, ImageElement, TextElement } from "@/types/canvas-elements.types";
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { getTextAnimationState, getTextBackgroundCss, getTextFontFamilyCss } from "@/lib/text-rendering";
+
+type ResizeDirection = { x: -1 | 0 | 1; y: -1 | 0 | 1; cursor: string; position: React.CSSProperties };
+
+const TEXT_RESIZE_HANDLES: ResizeDirection[] = [
+    { x: -1, y: -1, cursor: "nwse-resize", position: { left: -6, top: -6 } },
+    { x: 0, y: -1, cursor: "ns-resize", position: { left: "50%", top: -6, transform: "translateX(-50%)" } },
+    { x: 1, y: -1, cursor: "nesw-resize", position: { right: -6, top: -6 } },
+    { x: 1, y: 0, cursor: "ew-resize", position: { right: -6, top: "50%", transform: "translateY(-50%)" } },
+    { x: 1, y: 1, cursor: "nwse-resize", position: { right: -6, bottom: -6 } },
+    { x: 0, y: 1, cursor: "ns-resize", position: { left: "50%", bottom: -6, transform: "translateX(-50%)" } },
+    { x: -1, y: 1, cursor: "nesw-resize", position: { left: -6, bottom: -6 } },
+    { x: -1, y: 0, cursor: "ew-resize", position: { left: -6, top: "50%", transform: "translateY(-50%)" } },
+];
+
+function TextResizeHandles({ element, refSize, layerRef, onUpdate }: {
+    element: TextElement;
+    refSize: number;
+    layerRef: React.RefObject<HTMLDivElement | null>;
+    onUpdate: (updates: Partial<CanvasElement>) => void;
+}) {
+    const dragRef = useRef<{
+        pointerId: number; startX: number; startY: number; width: number; height: number;
+        x: number; y: number; direction: ResizeDirection;
+    } | null>(null);
+
+    const beginResize = (event: React.PointerEvent<HTMLButtonElement>, direction: ResizeDirection) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const box = event.currentTarget.parentElement;
+        if (!box || !layerRef.current || refSize <= 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            width: box.offsetWidth,
+            height: box.offsetHeight,
+            x: element.x,
+            y: element.y,
+            direction,
+        };
+    };
+
+    const resize = (event: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = dragRef.current;
+        const layer = layerRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !layer || refSize <= 0) return;
+        const angle = -element.rotation * Math.PI / 180;
+        const screenDx = event.clientX - drag.startX;
+        const screenDy = event.clientY - drag.startY;
+        const localDx = screenDx * Math.cos(angle) - screenDy * Math.sin(angle);
+        const localDy = screenDx * Math.sin(angle) + screenDy * Math.cos(angle);
+        const nextWidth = drag.direction.x === 0 ? drag.width : Math.max(40, drag.width + drag.direction.x * localDx);
+        const nextHeight = drag.direction.y === 0 ? drag.height : Math.max(24, drag.height + drag.direction.y * localDy);
+        const localCenterX = drag.direction.x * (nextWidth - drag.width) / 2;
+        const localCenterY = drag.direction.y * (nextHeight - drag.height) / 2;
+        const rotation = element.rotation * Math.PI / 180;
+        const centerDx = localCenterX * Math.cos(rotation) - localCenterY * Math.sin(rotation);
+        const centerDy = localCenterX * Math.sin(rotation) + localCenterY * Math.cos(rotation);
+        const layerRect = layer.getBoundingClientRect();
+        onUpdate({
+            x: Math.max(0, Math.min(100, drag.x + centerDx / layerRect.width * 100)),
+            y: Math.max(0, Math.min(100, drag.y + centerDy / layerRect.height * 100)),
+            width: nextWidth / refSize * 100,
+            height: nextHeight / refSize * 100,
+        });
+    };
+
+    const endResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+        if (dragRef.current?.pointerId !== event.pointerId) return;
+        dragRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    };
+
+    return TEXT_RESIZE_HANDLES.map((direction, index) => (
+        <button
+            key={index}
+            type="button"
+            data-element-resize
+            aria-label="Resize text box"
+            className="absolute z-20 size-3 rounded-[2px] border-2 border-white bg-blue-500 shadow-sm pointer-events-auto"
+            style={{ ...direction.position, cursor: direction.cursor }}
+            onPointerDown={(event) => beginResize(event, direction)}
+            onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+            onPointerMove={resize}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+        />
+    ));
+}
 
 function InlineTextEditor({
     element,
@@ -49,21 +140,32 @@ function InlineTextEditor({
             aria-multiline="true"
             style={{
                 fontSize: `${fontSize}px`,
-                fontFamily: element.fontFamily,
+                fontFamily: getTextFontFamilyCss(element.fontFamily),
                 fontWeight: element.fontWeight === "normal" ? 400 : element.fontWeight === "medium" ? 500 : 700,
+                fontStyle: element.fontStyle ?? "normal",
+                textDecoration: element.textDecoration ?? "none",
+                textAlign: element.textAlign ?? "center",
+                textTransform: element.textTransform ?? "none",
                 color: element.color,
                 opacity: element.opacity,
                 outline: "none",
                 border: "1.5px solid #3b82f6",
                 borderRadius: "3px",
                 padding: "2px 6px",
-                whiteSpace: "pre",
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+                width: element.width > 0 ? "100%" : undefined,
+                height: element.height > 0 ? "100%" : undefined,
+                boxSizing: "border-box",
+                overflow: element.height > 0 ? "auto" : undefined,
                 minWidth: "20px",
                 cursor: "text",
                 pointerEvents: "auto",
-                background: "transparent",
-                lineHeight: 1.2,
-                letterSpacing: "normal",
+                background: getTextBackgroundCss(element),
+                WebkitTextStroke: (element.strokeWidth ?? 0) > 0 ? `${element.strokeWidth}px ${element.strokeColor ?? "#000000"}` : undefined,
+                textShadow: (element.shadowBlur ?? 0) > 0 ? `${element.shadowOffsetX ?? 0}px ${element.shadowOffsetY ?? 0}px ${element.shadowBlur}px ${element.shadowColor ?? "#000000"}` : undefined,
+                lineHeight: element.lineHeight ?? 1.2,
+                letterSpacing: `${element.letterSpacing ?? 0}px`,
                 userSelect: "text",
             }}
             onBlur={(e) => commit(e.currentTarget)}
@@ -101,6 +203,7 @@ export function CanvasElementsLayer({
     onTextEditEnd,
     onGroupDragStart,
     videoIncludedInSelection,
+    currentTime = 0,
 }: {
     canvasContainerRef?: React.RefObject<HTMLDivElement | null>;
     canvasElements: CanvasElement[];
@@ -125,6 +228,7 @@ export function CanvasElementsLayer({
     onTextEditEnd?: (id: string, content: string) => void;
     onGroupDragStart?: (e: React.MouseEvent) => void;
     videoIncludedInSelection?: boolean;
+    currentTime?: number;
 }) {
     const layerRef = useRef<HTMLDivElement>(null);
     const [refSize, setRefSize] = useState(0);
@@ -197,6 +301,10 @@ export function CanvasElementsLayer({
                 const isHovered = hoveredElementId === element.id;
                 const activeCorner: Corner | null = elementCorners[element.id] ?? null;
 
+                if (element.type === "text" && currentTime >= 0 && !getTextAnimationState(element, currentTime).visible) {
+                    return null;
+                }
+
                 const wPx = toPx(element.width);
                 const hPx = toPx(element.height);
 
@@ -225,6 +333,10 @@ export function CanvasElementsLayer({
                     if (element.locked) return;
                     if (e.button === 2) return;
                     if ((e.target as HTMLElement).closest('[data-element-rotation]')) {
+                        e.stopPropagation();
+                        return;
+                    }
+                    if ((e.target as HTMLElement).closest('[data-element-resize]')) {
                         e.stopPropagation();
                         return;
                     }
@@ -310,6 +422,8 @@ export function CanvasElementsLayer({
                                 style={{
                                     left: `${element.x}%`,
                                     top: `${element.y}%`,
+                                    width: element.width > 0 ? `${wPx}px` : undefined,
+                                    height: element.height > 0 ? `${hPx}px` : undefined,
                                     transform: `translate(-50%, -50%) rotate(${element.rotation}deg)`,
                                     zIndex: isSelected ? TOP_Z_INDEX : element.zIndex,
                                     backgroundColor: isSelected ? 'rgba(0,0,0,0.002)' : 'transparent'
@@ -327,10 +441,14 @@ export function CanvasElementsLayer({
                                 {expandedHitArea}
 
                                 <div
-                                    className="whitespace-nowrap pointer-events-none"
+                                    className="whitespace-pre-wrap break-words pointer-events-none"
                                     style={{
                                         fontSize: refSize > 0 ? `${element.fontSize * (refSize / 1080)}px` : `${element.fontSize}px`,
                                         fontFamily: element.fontFamily,
+                                        width: element.width > 0 ? "100%" : undefined,
+                                        height: element.height > 0 ? "100%" : undefined,
+                                        boxSizing: "border-box",
+                                        overflow: "hidden",
                                         opacity: 0
                                     }}
                                 >
@@ -339,6 +457,9 @@ export function CanvasElementsLayer({
 
                                 {selectionBorder}
                                 {rotationHandle}
+                                {isSelected && !element.locked && onElementUpdate && (
+                                    <TextResizeHandles element={element} refSize={refSize} layerRef={layerRef} onUpdate={(updates) => onElementUpdate(element.id, updates)} />
+                                )}
                             </div>
                         );
                     }
@@ -408,6 +529,12 @@ export function CanvasElementsLayer({
 
                 if (element.type === "text") {
                     const isEditing = editingTextId === element.id;
+                    const animationEnd = (element.startTime ?? 0) + (element.animation?.delay ?? 0) + (element.animation?.duration ?? 0);
+                    const completedTime = Math.min(animationEnd, element.endTime ?? animationEnd);
+                    const previewTime = currentTime < 0 ? completedTime : currentTime;
+                    const animationState = getTextAnimationState(element, previewTime);
+                    if (!animationState.visible) return null;
+                    const scaledPadding = (element.backgroundPadding ?? 0) * (refSize / 1080);
                     return (
                         <div
                             key={element.id}
@@ -415,7 +542,9 @@ export function CanvasElementsLayer({
                             style={{
                                 left: `${element.x}%`,
                                 top: `${element.y}%`,
-                                transform: `translate(-50%, -50%) rotate(${element.rotation}deg)`,
+                                width: element.width > 0 ? `${wPx}px` : undefined,
+                                height: element.height > 0 ? `${hPx}px` : undefined,
+                                transform: `translate(-50%, -50%) translate(${animationState.translateX * (refSize / 1080)}px, ${animationState.translateY * (refSize / 1080)}px) rotate(${element.rotation}deg) scale(${animationState.scale})`,
                                 zIndex: isEditing ? 9999 : element.zIndex,
                                 transition: isDraggingElement ? 'none' : 'transform 0.1s ease-out',
                                 pointerEvents: isEditing ? 'auto' : 'none',
@@ -431,20 +560,36 @@ export function CanvasElementsLayer({
                                 />
                             ) : (
                                 <div
-                                    className="whitespace-nowrap"
+                                    className="whitespace-pre-wrap break-words"
                                     style={{
                                         fontSize: refSize > 0 ? `${element.fontSize * (refSize / 1080)}px` : `${element.fontSize}px`,
-                                        fontFamily: element.fontFamily,
+                                        fontFamily: getTextFontFamilyCss(element.fontFamily),
                                         fontWeight: element.fontWeight === 'normal' ? 400 : element.fontWeight === 'medium' ? 500 : 700,
-                                        textAlign: 'left',
+                                        fontStyle: element.fontStyle ?? 'normal',
+                                        textDecoration: element.textDecoration ?? 'none',
+                                        textTransform: element.textTransform ?? 'none',
+                                        textAlign: element.textAlign ?? 'center',
                                         color: element.color,
                                         pointerEvents: 'none',
-                                        opacity: element.opacity,
-                                        lineHeight: 1.2,
-                                        padding: '2px 6px',
+                                        width: element.width > 0 ? "100%" : undefined,
+                                        height: element.height > 0 ? "100%" : undefined,
+                                        overflow: "hidden",
+                                        overflowWrap: "anywhere",
+                                        boxSizing: "border-box",
+                                        display: element.height > 0 ? "flex" : undefined,
+                                        alignItems: element.height > 0 ? "center" : undefined,
+                                        justifyContent: element.textAlign === "left" ? "flex-start" : element.textAlign === "right" ? "flex-end" : "center",
+                                        opacity: element.opacity * animationState.opacity,
+                                        lineHeight: element.lineHeight ?? 1.2,
+                                        letterSpacing: `${(element.letterSpacing ?? 0) * (refSize / 1080)}px`,
+                                        padding: `${scaledPadding}px`,
+                                        borderRadius: `${(element.backgroundRadius ?? 0) * (refSize / 1080)}px`,
+                                        backgroundColor: getTextBackgroundCss(element),
+                                        WebkitTextStroke: (element.strokeWidth ?? 0) > 0 ? `${(element.strokeWidth ?? 0) * (refSize / 1080)}px ${element.strokeColor ?? '#000000'}` : undefined,
+                                        textShadow: (element.shadowBlur ?? 0) > 0 ? `${(element.shadowOffsetX ?? 0) * (refSize / 1080)}px ${(element.shadowOffsetY ?? 0) * (refSize / 1080)}px ${(element.shadowBlur ?? 0) * (refSize / 1080)}px ${element.shadowColor ?? '#000000'}` : undefined,
                                     }}
                                 >
-                                    {element.content}
+                                    {animationState.content}
                                 </div>
                             )}
                         </div>

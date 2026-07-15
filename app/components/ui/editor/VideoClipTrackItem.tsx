@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { motion, useMotionValue, useTransform } from "framer-motion";
-import type { VideoTrackClip } from "@/types/video-track.types";
+import { getClipPlaybackRate, getClipTimelineDuration, type VideoTrackClip } from "@/types/video-track.types";
 import { Icon } from "@iconify/react";
 import type { MotionValue } from "framer-motion";
 
@@ -50,7 +50,8 @@ export function VideoClipTrackItem({
         return (time / totalDuration) * contentWidth;
     }, [totalDuration, contentWidth]);
 
-    const clipDuration = clip.trimEnd - clip.trimStart;
+    const playbackRate = getClipPlaybackRate(clip);
+    const clipDuration = getClipTimelineDuration(clip);
 
     const pixelsToTime = useCallback((pixels: number) => {
         if (contentWidth === 0) return 0;
@@ -91,7 +92,7 @@ export function VideoClipTrackItem({
         let maxEnd = Infinity;
 
         for (const other of sorted) {
-            const otherEnd = other.startTime + (other.trimEnd - other.trimStart);
+            const otherEnd = other.startTime + getClipTimelineDuration(other);
             const clipEnd = clip.startTime + clipDuration;
 
             if (otherEnd <= clip.startTime) {
@@ -177,12 +178,12 @@ export function VideoClipTrackItem({
             newWidth = Math.min(newWidth, maxWidthByBoundary);
         }
 
-        const maxAvailableDuration = clip.duration - clip.trimStart;
+        const maxAvailableDuration = (clip.duration - clip.trimStart) / playbackRate;
         const maxWidthBySource = timeToPixels(maxAvailableDuration);
         newWidth = Math.min(newWidth, maxWidthBySource);
 
         clipWidth.set(newWidth);
-    }, [contentWidth, totalDuration, clipWidth, clipX, boundaries, timeToPixels, clip.duration, clip.trimStart]);
+    }, [contentWidth, totalDuration, clipWidth, clipX, boundaries, timeToPixels, clip.duration, clip.trimStart, playbackRate]);
 
     const handleResizeStart = useCallback((handle: 'start' | 'end') => {
         setIsResizing(handle);
@@ -197,16 +198,16 @@ export function VideoClipTrackItem({
         const newDuration = pixelsToTime(clipWidth.get());
 
         // Calculate new trim values
-        const trimDelta = newStartTime - clip.startTime;
+        const trimDelta = (newStartTime - clip.startTime) * playbackRate;
         const newTrimStart = Math.max(0, clip.trimStart + trimDelta);
-        const newTrimEnd = Math.min(clip.duration, newTrimStart + newDuration);
+        const newTrimEnd = Math.min(clip.duration, newTrimStart + newDuration * playbackRate);
 
         onUpdate({
             startTime: Math.max(0, newStartTime),
             trimStart: newTrimStart,
             trimEnd: newTrimEnd,
         });
-    }, [clipX, clipWidth, pixelsToTime, clip, onUpdate, onDragStateChange]);
+    }, [clipX, clipWidth, pixelsToTime, clip, onUpdate, onDragStateChange, playbackRate]);
 
     const isInteracting = isDragging || isResizing !== null;
 
@@ -277,6 +278,27 @@ export function VideoClipTrackItem({
                     </span>
                 </span>
             </div>
+
+            {isSelected && !isInteracting && (
+                <label
+                    className="absolute right-3 top-1/2 z-30 -translate-y-1/2 flex items-center gap-1 rounded bg-black/80 px-1.5 py-1 text-[10px] text-white shadow-lg"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                    title="Clip speed"
+                >
+                    <Icon icon="solar:rewind-forward-bold" width="12" className="text-emerald-400" />
+                    <select
+                        aria-label="Clip speed"
+                        value={playbackRate}
+                        onChange={(event) => onUpdate({ playbackRate: Number(event.target.value) })}
+                        className="cursor-pointer bg-transparent text-white outline-none"
+                    >
+                        {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map((rate) => (
+                            <option key={rate} value={rate} className="bg-[#151515]">{rate}x</option>
+                        ))}
+                    </select>
+                </label>
+            )}
 
             <motion.div
                 className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-20 group/trim flex items-center justify-center"

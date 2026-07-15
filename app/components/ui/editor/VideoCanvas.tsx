@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { VideoCanvasHandle, VideoCanvasProps, VideoThumbnail } from "@/types";
 import type { ImageElement, SvgElement } from "@/types/canvas-elements.types";
 import { getCameraLayout } from "@/types/camera.types";
+import { DEFAULT_BACKGROUND_VIDEO_TRANSFORM } from "@/types/background.types";
 import { ASPECT_RATIO_DIMENSIONS } from "@/types";
 import { getWallpaperUrl } from "@/lib/wallpaper.utils";
 import { drawRoundedRect, drawRoundedRectBottomOnly, calculateScaledPadding, applyCanvasBackground, getAspectRatioStyle, getAspectRatioNumber, Corner, getCornerStyle, getNearestCorner, snapRotation } from "@/lib/canvas.utils";
@@ -32,6 +33,9 @@ import { Viewer3DControlsBridge } from "@/components/ui/Viewer3DControlsBridge";
 import { applyGradientMaskToRegion, GetMediaMaskStyles } from "@/lib/media-mask.utils";
 import { MediaContent } from "@/components/ui/MediaContent";
 import { RotationGuideLine } from "@/components/ui/RotationGuideLine";
+import { drawTextElement } from "@/lib/text-rendering";
+import { getMockupAnimationState, getMockupTransformState, type MockupTransformKeyframe } from "@/types/mockup-animation.types";
+import { seekVideoToTime } from "@/lib/video.utils";
 
 export type { VideoCanvasHandle, VideoCanvasProps };
 
@@ -65,8 +69,92 @@ const IPadMini63DViewer = dynamic(
     { ssr: false }
 );
 
+type BackgroundResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
+
+const BACKGROUND_RESIZE_HANDLES: Array<{
+    id: BackgroundResizeHandle;
+    className: string;
+    cursor: string;
+}> = [
+    { id: "nw", className: "left-0 top-0 -translate-x-1/2 -translate-y-1/2", cursor: "nwse-resize" },
+    { id: "n", className: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2", cursor: "ns-resize" },
+    { id: "ne", className: "right-0 top-0 translate-x-1/2 -translate-y-1/2", cursor: "nesw-resize" },
+    { id: "e", className: "right-0 top-1/2 translate-x-1/2 -translate-y-1/2", cursor: "ew-resize" },
+    { id: "se", className: "right-0 bottom-0 translate-x-1/2 translate-y-1/2", cursor: "nwse-resize" },
+    { id: "s", className: "left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2", cursor: "ns-resize" },
+    { id: "sw", className: "left-0 bottom-0 -translate-x-1/2 translate-y-1/2", cursor: "nesw-resize" },
+    { id: "w", className: "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2", cursor: "ew-resize" },
+];
+
+function drawCover(
+    context: CanvasRenderingContext2D,
+    source: CanvasImageSource,
+    sourceWidth: number,
+    sourceHeight: number,
+    destinationWidth: number,
+    destinationHeight: number,
+    destinationX = 0,
+    destinationY = 0,
+    overflow = 0,
+) {
+    if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+    const destinationAspect = destinationWidth / destinationHeight;
+    const sourceAspect = sourceWidth / sourceHeight;
+    let sourceX = 0;
+    let sourceY = 0;
+    let cropWidth = sourceWidth;
+    let cropHeight = sourceHeight;
+
+    if (sourceAspect > destinationAspect) {
+        cropWidth = sourceHeight * destinationAspect;
+        sourceX = (sourceWidth - cropWidth) / 2;
+    } else {
+        cropHeight = sourceWidth / destinationAspect;
+        sourceY = (sourceHeight - cropHeight) / 2;
+    }
+
+    context.drawImage(
+        source,
+        sourceX,
+        sourceY,
+        cropWidth,
+        cropHeight,
+        destinationX - overflow,
+        destinationY - overflow,
+        destinationWidth + overflow * 2,
+        destinationHeight + overflow * 2,
+    );
+}
+
+function waitForVideoEvent(video: HTMLVideoElement, eventName: "loadedmetadata") {
+    return new Promise<void>((resolve) => {
+        const finish = () => {
+            video.removeEventListener(eventName, finish);
+            video.removeEventListener("error", finish);
+            clearTimeout(timeoutId);
+            resolve();
+        };
+
+        video.addEventListener(eventName, finish, { once: true });
+        video.addEventListener("error", finish, { once: true });
+        const timeoutId = setTimeout(finish, 1000);
+    });
+}
+
+async function seekVideoFrame(video: HTMLVideoElement, timelineTime: number): Promise<void> {
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+        await waitForVideoEvent(video, "loadedmetadata");
+    }
+
+    const duration = video.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    const target = Math.min(Math.max(timelineTime % duration, 0), Math.max(duration - 0.001, 0));
+    await seekVideoToTime(video, target);
+}
+
 function VideoCanvasInner({
-    activeTool: _activeTool,
+    activeTool,
     mediaType = "video",
     imageUrl = null,
     imageRef,
@@ -85,6 +173,9 @@ function VideoCanvasInner({
     selectedWallpaper = -1,
     backgroundBlur = 0,
     selectedImageUrl = "",
+    selectedBackgroundVideoUrl = "",
+    backgroundVideoTransform = DEFAULT_BACKGROUND_VIDEO_TRANSFORM,
+    onBackgroundVideoTransformChange,
     unsplashOverrideUrl = "",
     backgroundColorCss,
     onTimeUpdate,
@@ -95,13 +186,15 @@ function VideoCanvasInner({
     getThumbnailForTime,
     zoomFragments = [],
     currentTime = 0,
+    isPlaying = false,
+    previewQuality = "auto",
     mockupId = "none",
     mockupConfig,
     onVideoUpload,
     onImageUpload,
     onImageDrop,
     isUploading = false,
-    videoTransform = { rotation: 0, translateX: 0, translateY: 0 },
+    videoTransform = { rotation: 0, translateX: 0, translateY: 0, scale: 1 },
     onVideoTransformChange,
     canvasElements = [],
     selectedElementId = null,
@@ -118,7 +211,6 @@ function VideoCanvasInner({
     onTextToolDeactivate,
     onAddElement,
     onMockupClick,
-    isRestoringProjectRef,
     ref,
 }: VideoCanvasProps & { ref?: React.Ref<VideoCanvasHandle> }) {
     const wallpaperUrl = getWallpaperUrl(selectedWallpaper);
@@ -135,7 +227,7 @@ function VideoCanvasInner({
         imagePhoneDevice,
         imagePhoneOpening,
         imagePhoneShadow, imagePhoneShadowColor,
-        imagePhoneRefWidth, setImagePhoneRefWidth
+        imagePhoneAnimation, setImagePhoneAnimation,
     } = useMockup3dContext();
 
     // 3D phone overlay is active in both video and image mode
@@ -147,10 +239,6 @@ function VideoCanvasInner({
         imagePhoneApiRef.current = api;
     }, []);
 
-    const handlePhoneRotationChange = useCallback((rx: number, ry: number) => {
-        setImagePhoneRotX(rx);
-        setImagePhoneRotY(ry);
-    }, [setImagePhoneRotX, setImagePhoneRotY]);
     // Ctrl+scroll zoom badge state for image phone overlay
     const [imagePhoneZoomVisible, setImagePhoneZoomVisible] = useState(false);
     const imagePhoneZoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -162,6 +250,7 @@ function VideoCanvasInner({
     const imagePhoneApiRef = useRef<{
         renderAt: (w: number, h: number) => void;
         restorePreview: () => void;
+        setRotation?: (rx: number, ry: number, rz: number) => void;
         hasBuiltInShadow?: boolean;
         getVisualSize?: () => { width: number; height: number } | null;
     } | null>(null);
@@ -177,6 +266,28 @@ function VideoCanvasInner({
         if (!isScrubbing || !getThumbnailForTime) return null;
         return getThumbnailForTime(scrubTime);
     }, [isScrubbing, scrubTime, getThumbnailForTime]);
+
+    // Auto mirrors an NLE proxy workflow: full fidelity while paused, half
+    // resolution during playback, and quarter resolution while actively
+    // scrubbing. The 2D composition surface and WebGL renderer both follow the
+    // selected quality; drawFrame() remains on the independent export canvas.
+    const previewScale = useMemo(() => {
+        if (previewQuality === "full") return 1;
+        if (previewQuality === "half") return 0.5;
+        if (previewQuality === "quarter") return 0.25;
+        if (isScrubbing) return 0.25;
+        if (isPlaying) return 0.5;
+        return 1;
+    }, [previewQuality, isScrubbing, isPlaying]);
+
+    const previewDpr = useMemo(() => {
+        if (previewQuality === "full") return 3;
+        if (previewQuality === "half") return 1.5;
+        if (previewQuality === "quarter") return 1;
+        if (isScrubbing) return 1;
+        if (isPlaying) return 1.5;
+        return 3;
+    }, [previewQuality, isScrubbing, isPlaying]);
 
     // Find active zoom fragment based on current time
     const activeZoomFragment = useMemo<ZoomFragment | null>(() => {
@@ -228,6 +339,7 @@ function VideoCanvasInner({
     const shouldShowUnsplashOverride = backgroundTab === "wallpaper" && unsplashOverrideUrl !== "";
     const shouldShowWallpaper = backgroundTab === "wallpaper" && selectedWallpaper >= 0 && !shouldShowUnsplashOverride;
     const shouldShowCustomImage = backgroundTab === "image" && selectedImageUrl !== "";
+    const shouldShowBackgroundVideo = backgroundTab === "video" && selectedBackgroundVideoUrl !== "";
     const shouldShowCustomColor = backgroundTab === "color" && !!backgroundColorCss;
 
     const exportCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -236,6 +348,7 @@ function VideoCanvasInner({
     const foregroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const wallpaperImageRef = useRef<HTMLImageElement | null>(null);
     const customImageRef = useRef<HTMLImageElement | null>(null);
+    const backgroundVideoRef = useRef<HTMLVideoElement | null>(null);
 
     const exportDimensions = useMemo(() => {
         if ((aspectRatio === "auto" || aspectRatio === "custom") && customAspectRatio) {
@@ -249,6 +362,109 @@ function VideoCanvasInner({
     // On-canvas controls state
     const [isVideoHovered, setIsVideoHovered] = useState(false);
     const [isVideoSelected, setIsVideoSelected] = useState(false);
+    const phoneAnimationEnd = imagePhoneAnimation.startTime + imagePhoneAnimation.delay + imagePhoneAnimation.duration;
+    const phonePreviewTime = mediaType === "image"
+        ? phoneAnimationEnd
+        : currentTime;
+    const phonePreviewAnimation = useMemo(
+        () => getMockupAnimationState(imagePhoneAnimation, phonePreviewTime),
+        [imagePhoneAnimation, phonePreviewTime]
+    );
+    const phonePreviewTransform = useMemo(() => getMockupTransformState(imagePhoneAnimation, phonePreviewTime, {
+        x: imagePhoneX,
+        y: imagePhoneY,
+        scale: imagePhoneScale,
+        rotationX: imagePhoneRotX,
+        rotationY: imagePhoneRotY,
+        rotationZ: imagePhoneRotZ,
+    }), [imagePhoneAnimation, phonePreviewTime, imagePhoneX, imagePhoneY, imagePhoneScale, imagePhoneRotX, imagePhoneRotY, imagePhoneRotZ]);
+    const hasTransformKeyframes = (imagePhoneAnimation.keyframes ?? []).length > 0;
+    const hasKeyframeAtPreviewTime = (imagePhoneAnimation.keyframes ?? []).some(keyframe => Math.abs(keyframe.time - phonePreviewTime) < 0.08);
+    const updatePhoneKeyframeAtPreviewTime = useCallback((updates: Partial<MockupTransformKeyframe>) => {
+        setImagePhoneAnimation(previous => {
+            const keyframes = previous.keyframes ?? [];
+            const existing = keyframes.find(keyframe => Math.abs(keyframe.time - phonePreviewTime) < 0.08);
+            if (existing) return { ...previous, keyframes: keyframes.map(keyframe => keyframe.id === existing.id ? { ...keyframe, ...updates } : keyframe) };
+            const transform = getMockupTransformState(previous, phonePreviewTime, {
+                x: imagePhoneX, y: imagePhoneY, scale: imagePhoneScale,
+                rotationX: imagePhoneRotX, rotationY: imagePhoneRotY, rotationZ: imagePhoneRotZ,
+            });
+            const created: MockupTransformKeyframe = {
+                id: `mockup-keyframe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                time: phonePreviewTime,
+                easing: "ease-in-out",
+                ...transform,
+                ...updates,
+            };
+            return { ...previous, keyframes: [...keyframes, created].sort((a, b) => a.time - b.time) };
+        });
+    }, [phonePreviewTime, setImagePhoneAnimation, imagePhoneX, imagePhoneY, imagePhoneScale, imagePhoneRotX, imagePhoneRotY, imagePhoneRotZ]);
+    const handlePhoneRotationChange = useCallback((rx: number, ry: number) => {
+        if (hasKeyframeAtPreviewTime) {
+            updatePhoneKeyframeAtPreviewTime({ rotationX: rx, rotationY: ry });
+        } else {
+            setImagePhoneRotX(rx);
+            setImagePhoneRotY(ry);
+        }
+    }, [hasKeyframeAtPreviewTime, setImagePhoneRotX, setImagePhoneRotY, updatePhoneKeyframeAtPreviewTime]);
+    const phoneControlDimensions = DEVICE_3D_DIMENSIONS[imagePhoneDevice] ?? { width: PHONE_W, height: PHONE_H };
+    const phoneTransformDragRef = useRef<{
+        pointerId: number;
+        mode: "move" | "resize";
+        handle?: Corner;
+        startX: number;
+        startY: number;
+        initialX: number;
+        initialY: number;
+        initialScale: number;
+    } | null>(null);
+    const [isTransformingPhone, setIsTransformingPhone] = useState(false);
+
+    const beginPhoneTransform = useCallback((event: React.PointerEvent, mode: "move" | "resize", handle?: Corner) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        phoneTransformDragRef.current = {
+            pointerId: event.pointerId,
+            mode,
+            handle,
+            startX: event.clientX,
+            startY: event.clientY,
+            initialX: phonePreviewTransform.x,
+            initialY: phonePreviewTransform.y,
+            initialScale: phonePreviewTransform.scale,
+        };
+        setIsVideoSelected(true);
+        setIsTransformingPhone(true);
+    }, [phonePreviewTransform]);
+
+    const movePhoneTransform = useCallback((event: React.PointerEvent) => {
+        const drag = phoneTransformDragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const dx = event.clientX - drag.startX;
+        const dy = event.clientY - drag.startY;
+        if (drag.mode === "move") {
+            const x = drag.initialX + dx;
+            const y = drag.initialY + dy;
+            if (hasTransformKeyframes) updatePhoneKeyframeAtPreviewTime({ x, y });
+            else { setImagePhoneX(x); setImagePhoneY(y); }
+        } else {
+            const horizontalDirection = drag.handle?.endsWith("left") ? -1 : 1;
+            const verticalDirection = drag.handle?.startsWith("top") ? -1 : 1;
+            const delta = (dx * horizontalDirection + dy * verticalDirection) / 450;
+            const scale = Math.max(0.2, Math.min(4, drag.initialScale + delta));
+            if (hasTransformKeyframes) updatePhoneKeyframeAtPreviewTime({ scale });
+            else setImagePhoneScale(scale);
+        }
+    }, [hasTransformKeyframes, setImagePhoneScale, setImagePhoneX, setImagePhoneY, updatePhoneKeyframeAtPreviewTime]);
+
+    const endPhoneTransform = useCallback((event: React.PointerEvent) => {
+        if (phoneTransformDragRef.current?.pointerId !== event.pointerId) return;
+        phoneTransformDragRef.current = null;
+        setIsTransformingPhone(false);
+        event.currentTarget.releasePointerCapture(event.pointerId);
+    }, []);
 
     // Intrinsic aspect ratio of the actual media (video/image), used to size
     // the "none" mockup container to the real letterboxed contain-box instead
@@ -260,7 +476,6 @@ function VideoCanvasInner({
 
     const lastSetVideoUrlRef = useRef<string | null>(null);
     const preservedVideoStateRef = useRef<{ time: number; playing: boolean } | null>(null);
-    const imagePhoneRescaleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Reset lastSetVideoUrlRef when mockupId changes to force src re-assignment on remount
     useEffect(() => {
@@ -349,12 +564,22 @@ function VideoCanvasInner({
     }, []);
     const [isDraggingVideo, setIsDraggingVideo] = useState(false);
     const [isDraggingRotation, setIsDraggingRotation] = useState(false);
+    const [isResizingVideo, setIsResizingVideo] = useState(false);
     const [videoHoverCorner, setVideoHoverCorner] = useState<Corner | null>("top-right");
     const dragStartPos = useRef({ x: 0, y: 0, initialRotation: 0, initialTranslateX: 0, initialTranslateY: 0 });
+    const videoResizeDragRef = useRef<{ centerX: number; centerY: number; startDistance: number; initialScale: number } | null>(null);
     const rotationCenterRef = useRef<{ x: number; y: number } | null>(null);
     const rotationStartAngleRef = useRef<number>(0);
     const videoContainerRef = useRef<HTMLDivElement>(null);
     const clickStartPosRef = useRef<{ x: number; y: number } | null>(null);
+    const [backgroundVideoInteraction, setBackgroundVideoInteraction] = useState<
+        { mode: "move" } | { mode: "resize"; handle: BackgroundResizeHandle } | null
+    >(null);
+    const backgroundVideoDragStartRef = useRef({
+        clientX: 0,
+        clientY: 0,
+        transform: DEFAULT_BACKGROUND_VIDEO_TRANSFORM,
+    });
     const CLICK_THRESHOLD = 5; // px
     const [elementCorners, setElementCorners] = useState<Record<string, Corner | null>>({});
 
@@ -424,39 +649,6 @@ function VideoCanvasInner({
         glow: deviceDefaults.glow,
         environment: deviceDefaults.environment,
     });
-
-    useEffect(() => {
-        if (!canvasDimensions) return;
-
-        const arKnown = aspectRatio !== "auto" || !!customAspectRatio;
-        if (!arKnown) return;
-
-        if (isRestoringProjectRef?.current) return;
-
-        if (imagePhoneRescaleTimerRef.current) {
-            clearTimeout(imagePhoneRescaleTimerRef.current);
-        }
-
-        imagePhoneRescaleTimerRef.current = setTimeout(() => {
-            if (isRestoringProjectRef?.current) return;
-
-            if (imagePhoneRefWidth > 0 && Math.abs(canvasDimensions.width - imagePhoneRefWidth) > 0.5) {
-                const ratio = canvasDimensions.width / imagePhoneRefWidth;
-                setImagePhoneX(prev => prev * ratio);
-                setImagePhoneY(prev => prev * ratio);
-                setImagePhoneScale(prev => prev * ratio);
-                setImagePhoneRefWidth(canvasDimensions.width);
-            } else if (imagePhoneRefWidth === 0) {
-                setImagePhoneRefWidth(canvasDimensions.width);
-            }
-        }, 300);
-
-        return () => {
-            if (imagePhoneRescaleTimerRef.current) {
-                clearTimeout(imagePhoneRescaleTimerRef.current);
-            }
-        };
-    }, [canvasDimensions, imagePhoneRefWidth, aspectRatio, customAspectRatio, setImagePhoneX, setImagePhoneY, setImagePhoneScale, setImagePhoneRefWidth, isRestoringProjectRef]);
 
     const cameraDragRef = useRef<{
         pointerId: number;
@@ -670,6 +862,33 @@ function VideoCanvasInner({
     }, [imageUrlToLoad]);
 
     useEffect(() => {
+        const backgroundVideo = backgroundVideoRef.current;
+        if (!backgroundVideo || !shouldShowBackgroundVideo) return;
+
+        const syncPlayback = () => {
+            if (!Number.isFinite(backgroundVideo.duration) || backgroundVideo.duration <= 0) return;
+            const target = currentTime % backgroundVideo.duration;
+            if (Math.abs(backgroundVideo.currentTime - target) > 0.2) {
+                backgroundVideo.currentTime = target;
+            }
+
+            if (mediaType === "image" || isPlaying) {
+                backgroundVideo.play().catch(() => {});
+            } else {
+                backgroundVideo.pause();
+            }
+        };
+
+        if (backgroundVideo.readyState >= HTMLMediaElement.HAVE_METADATA) {
+            syncPlayback();
+        } else {
+            backgroundVideo.addEventListener("loadedmetadata", syncPlayback, { once: true });
+        }
+
+        return () => backgroundVideo.removeEventListener("loadedmetadata", syncPlayback);
+    }, [shouldShowBackgroundVideo, selectedBackgroundVideoUrl, currentTime, isPlaying, mediaType, apply3DToBackground]);
+
+    useEffect(() => {
         if (!imagePhoneActive) {
             setActivePhoneDevice(null);
             return;
@@ -724,12 +943,18 @@ function VideoCanvasInner({
     }, [canvasElements]);
 
     useEffect(() => {
-        if (!isDraggingVideo && !isDraggingRotation) return;
+        if (!isDraggingVideo && !isDraggingRotation && !isResizingVideo) return;
 
         const handleMouseMove = (e: MouseEvent) => {
             if (!onVideoTransformChange) return;
 
-            if (isDraggingRotation) {
+            if (isResizingVideo) {
+                const resize = videoResizeDragRef.current;
+                if (!resize) return;
+                const distance = Math.hypot(e.clientX - resize.centerX, e.clientY - resize.centerY);
+                const scale = Math.max(0.2, Math.min(4, resize.initialScale * distance / Math.max(1, resize.startDistance)));
+                onVideoTransformChange({ ...videoTransform, scale });
+            } else if (isDraggingRotation) {
                 const center = rotationCenterRef.current;
                 if (!center) return;
 
@@ -789,6 +1014,8 @@ function VideoCanvasInner({
         const handleMouseUp = () => {
             setIsDraggingVideo(false);
             setIsDraggingRotation(false);
+            setIsResizingVideo(false);
+            videoResizeDragRef.current = null;
             setMockupAlignmentGuides({ vertical: [], horizontal: [] });
             setRotationGuide(null);
             rotationCenterRef.current = null;
@@ -800,7 +1027,57 @@ function VideoCanvasInner({
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("mouseup", handleMouseUp);
         };
-    }, [isDraggingVideo, isDraggingRotation, videoTransform, onVideoTransformChange]);
+    }, [isDraggingVideo, isDraggingRotation, isResizingVideo, videoTransform, onVideoTransformChange]);
+
+    useEffect(() => {
+        if (!backgroundVideoInteraction || !onBackgroundVideoTransformChange) return;
+
+        const handleMouseMove = (event: MouseEvent) => {
+            const canvas = previewContainerRef.current;
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const start = backgroundVideoDragStartRef.current;
+            const deltaX = ((event.clientX - start.clientX) / rect.width) * 100;
+            const deltaY = ((event.clientY - start.clientY) / rect.height) * 100;
+
+            if (backgroundVideoInteraction.mode === "move") {
+                onBackgroundVideoTransformChange({
+                    ...start.transform,
+                    x: Math.max(-200, Math.min(300, start.transform.x + deltaX)),
+                    y: Math.max(-200, Math.min(300, start.transform.y + deltaY)),
+                });
+                return;
+            }
+
+            const handle = backgroundVideoInteraction.handle;
+            let left = start.transform.x - start.transform.width / 2;
+            let right = start.transform.x + start.transform.width / 2;
+            let top = start.transform.y - start.transform.height / 2;
+            let bottom = start.transform.y + start.transform.height / 2;
+
+            if (handle.includes("w")) left = Math.min(left + deltaX, right - 8);
+            if (handle.includes("e")) right = Math.max(right + deltaX, left + 8);
+            if (handle.includes("n")) top = Math.min(top + deltaY, bottom - 8);
+            if (handle.includes("s")) bottom = Math.max(bottom + deltaY, top + 8);
+
+            onBackgroundVideoTransformChange({
+                x: (left + right) / 2,
+                y: (top + bottom) / 2,
+                width: right - left,
+                height: bottom - top,
+            });
+        };
+
+        const handleMouseUp = () => setBackgroundVideoInteraction(null);
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [backgroundVideoInteraction, onBackgroundVideoTransformChange]);
 
     // Camera overlay: load src when cameraUrl changes
     useEffect(() => {
@@ -1079,7 +1356,8 @@ function VideoCanvasInner({
         elements: typeof canvasElements,
         canvasWidth: number,
         canvasHeight: number,
-        behindVideo: boolean
+        behindVideo: boolean,
+        timelineTime: number,
     ) => {
         const filteredElements = elements.filter(el =>
             behindVideo ? el.zIndex < VIDEO_Z_INDEX : el.zIndex >= VIDEO_Z_INDEX
@@ -1173,25 +1451,10 @@ function VideoCanvasInner({
 
                 ctx.restore();
             } else if (element.type === "text") {
-                ctx.save();
-
-                const elemX = (element.x / 100) * canvasWidth;
-                const elemY = (element.y / 100) * canvasHeight;
-
-                ctx.translate(elemX, elemY);
-                ctx.rotate((element.rotation * Math.PI) / 180);
-                ctx.globalAlpha = element.opacity;
-
-                const scaledFontSize = element.fontSize * (referenceSize / 1080);
-                const fontWeight = element.fontWeight === 'normal' ? '400' : element.fontWeight === 'medium' ? '500' : '700';
-                ctx.font = `${fontWeight} ${scaledFontSize}px ${element.fontFamily}`;
-                ctx.fillStyle = element.color;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-
-                ctx.fillText(element.content, 0, 0);
-
-                ctx.restore();
+                const textTime = mediaType === "image"
+                    ? (element.startTime ?? 0) + (element.animation?.delay ?? 0) + (element.animation?.duration ?? 0)
+                    : timelineTime;
+                drawTextElement(ctx, element, canvasWidth, canvasHeight, textTime);
             }
         }
     };
@@ -1229,24 +1492,44 @@ function VideoCanvasInner({
         const frameTime = mediaType === "video"
             ? (explicitTimelineTime ?? (video ? video.currentTime : 0))
             : 0;
+        const phoneFrameAnimation = getMockupAnimationState(
+            imagePhoneAnimation,
+            mediaType === "image" ? phoneAnimationEnd : frameTime,
+        );
+        const phoneFrameTransform = getMockupTransformState(imagePhoneAnimation, mediaType === "image" ? phoneAnimationEnd : frameTime, {
+            x: imagePhoneX, y: imagePhoneY, scale: imagePhoneScale,
+            rotationX: imagePhoneRotX, rotationY: imagePhoneRotY, rotationZ: imagePhoneRotZ,
+        });
+        const phoneVisible = imagePhoneActive && phoneFrameAnimation.visible;
         const zoomState = calculateSmoothZoom(frameTime, zoomFragments);
         const zoomCenterX = canvasWidth / 2;
         const zoomCenterY = canvasHeight / 2;
         const backgroundImage = (shouldShowCustomImage || shouldShowUnsplashOverride) ? customImageRef.current : (shouldShowWallpaper ? wallpaperImageRef.current : null);
+        const backgroundVideo = shouldShowBackgroundVideo ? backgroundVideoRef.current : null;
+
+        if (backgroundVideo) {
+            await seekVideoFrame(backgroundVideo, frameTime);
+        }
 
         // Shared helper: draw background into any 2D context
         const drawBg = (c: CanvasRenderingContext2D) => {
             if (shouldShowCustomColor && backgroundColorCss) {
                 applyCanvasBackground(c, backgroundColorCss, canvasWidth, canvasHeight);
+            } else if (backgroundVideo && backgroundVideo.videoWidth > 0 && backgroundVideo.videoHeight > 0) {
+                c.save();
+                const overflow = backgroundBlur > 0 ? backgroundBlur * 2 : 0;
+                if (backgroundBlur > 0) c.filter = `blur(${backgroundBlur * 0.8}px)`;
+                const boxWidth = canvasWidth * backgroundVideoTransform.width / 100;
+                const boxHeight = canvasHeight * backgroundVideoTransform.height / 100;
+                const boxX = canvasWidth * backgroundVideoTransform.x / 100 - boxWidth / 2;
+                const boxY = canvasHeight * backgroundVideoTransform.y / 100 - boxHeight / 2;
+                drawCover(c, backgroundVideo, backgroundVideo.videoWidth, backgroundVideo.videoHeight, boxWidth, boxHeight, boxX, boxY, overflow);
+                c.restore();
             } else if (backgroundImage) {
                 c.save();
-                if (backgroundBlur > 0) {
-                    c.filter = `blur(${backgroundBlur * 0.8}px)`;
-                    const overflow = backgroundBlur * 2;
-                    c.drawImage(backgroundImage, -overflow, -overflow, canvasWidth + overflow * 2, canvasHeight + overflow * 2);
-                } else {
-                    c.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
-                }
+                const overflow = backgroundBlur > 0 ? backgroundBlur * 2 : 0;
+                if (backgroundBlur > 0) c.filter = `blur(${backgroundBlur * 0.8}px)`;
+                drawCover(c, backgroundImage, backgroundImage.naturalWidth, backgroundImage.naturalHeight, canvasWidth, canvasHeight, 0, 0, overflow);
                 c.restore();
             }
         };
@@ -1292,6 +1575,8 @@ function VideoCanvasInner({
             c.save();
             c.translate(vCX + txPx, vCY + tyPx);
             c.rotate(videoTransform.rotation * DEG_TO_RAD);
+            const independentScale = videoTransform.scale ?? 1;
+            c.scale(independentScale, independentScale);
 
             if (applyImageXform && imageTransform && !apply3DToBackground) {
                 if (imageTransform.perspective && imageTransform.perspective > 0 && (imageTransform.rotateX !== 0 || imageTransform.rotateY !== 0)) {
@@ -1393,26 +1678,26 @@ function VideoCanvasInner({
                 ctx.translate(-zoomCenterX, -zoomCenterY + iTY);
             }
             drawBg(ctx);
-            await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, true);
+            await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, true, frameTime);
             const { containerX: cX, containerY: cY, containerWidth: cW, containerHeight: cH } = computeContainer();
             // Only draw the 2D mockup + media when the 3D phone overlay is NOT active.
             // In the preview, CSS opacity:0 hides the video layer; here we skip drawing it.
-            if (!imagePhoneActive) {
+            if (!phoneVisible) {
                 drawMockupAndMedia(ctx, cX, cY, cW, cH, image!, true);
             }
-            await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, false);
+            await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, false, frameTime);
             // ── Composite image phone mockup (WebGL snapshot) onto export canvas ──
-            if (imagePhoneActive && imagePhoneCanvasRef.current) {
+            if (phoneVisible && imagePhoneCanvasRef.current) {
                 const phoneGL = imagePhoneCanvasRef.current;
                 const domW = canvasDimensions?.width ?? canvasWidth;
                 const pxScale = canvasWidth / domW;
-                const phoneCx = canvasWidth / 2 + imagePhoneX * pxScale;
-                const phoneCy = canvasHeight / 2 + imagePhoneY * pxScale;
+                const phoneCx = canvasWidth / 2 + phoneFrameTransform.x * pxScale;
+                const phoneCy = canvasHeight / 2 + phoneFrameTransform.y * pxScale;
                 // Use device-specific dimensions instead of generic PHONE_W/H
                 const measuredDims = imagePhoneApiRef.current?.getVisualSize?.();
                 const deviceDims = measuredDims ?? DEVICE_3D_DIMENSIONS[imagePhoneDevice] ?? { width: PHONE_W, height: PHONE_H };
-                const drawW = deviceDims.width * imagePhoneScale * pxScale;
-                const drawH = deviceDims.height * imagePhoneScale * pxScale;
+                const drawW = deviceDims.width * phoneFrameTransform.scale * pxScale;
+                const drawH = deviceDims.height * phoneFrameTransform.scale * pxScale;
                 // Paint CSS-shadow replica as a 2D radial gradient underneath the model,
                 // but only for devices whose 3D viewer doesn't already render ContactShadows.
                 const hasBuiltInShadow = imagePhoneApiRef.current?.hasBuiltInShadow ?? false;
@@ -1433,6 +1718,7 @@ function VideoCanvasInner({
                     ctx.restore();
                 }
                 if (highQuality) {
+                    imagePhoneApiRef.current?.setRotation?.(phoneFrameTransform.rotationX, phoneFrameTransform.rotationY, phoneFrameTransform.rotationZ);
                     imagePhoneApiRef.current?.renderAt(drawW, drawH);
                     ctx.drawImage(phoneGL, phoneCx - drawW / 2, phoneCy - drawH / 2, drawW, drawH);
                     imagePhoneApiRef.current?.restorePreview();
@@ -1515,7 +1801,7 @@ function VideoCanvasInner({
 
         ctx.save();
         applyVideoZoom(ctx);
-        await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, true);
+        await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, true, frameTime);
         ctx.restore();
 
         await drawCameraOverlay(ctx, canvasWidth, canvasHeight);
@@ -1525,10 +1811,10 @@ function VideoCanvasInner({
         if (has3DEffect && fgCanvas && fgCtx) {
             fgCtx.save();
             fgCtx.translate(fgOffsetX, fgOffsetY);
-            if (!imagePhoneActive) {
+            if (!phoneVisible) {
                 drawMockupAndMedia(fgCtx, containerX, containerY, containerWidth, containerHeight, video!, false);
             }
-            if (imagePhoneActive && imagePhoneCanvasRef.current) {
+            if (phoneVisible && imagePhoneCanvasRef.current) {
                 drawPhone3DCompositeWithZoom(ctx, canvasWidth, canvasHeight, frameTime, zoomState, highQuality, pivotX, pivotY);
 
             }
@@ -1553,7 +1839,7 @@ function VideoCanvasInner({
                 if (vlCtx) {
                     vlCtx.imageSmoothingEnabled = true;
                     vlCtx.imageSmoothingQuality = 'high';
-                    if (!imagePhoneActive) {
+                    if (!phoneVisible) {
                         drawMockupAndMedia(vlCtx, containerX, containerY, containerWidth, containerHeight, video!, false);
                     }
 
@@ -1615,7 +1901,7 @@ function VideoCanvasInner({
                     ctx.drawImage(videoLayer, 0, 0);
                     ctx.restore();
                 }
-                if (imagePhoneActive && imagePhoneCanvasRef.current) {
+                if (phoneVisible && imagePhoneCanvasRef.current) {
                     drawPhone3DCompositeWithZoom(ctx, canvasWidth, canvasHeight, frameTime, zoomState, highQuality, pivotX, pivotY);
 
                 }
@@ -1623,12 +1909,12 @@ function VideoCanvasInner({
             } else {
                 ctx.save();
                 applyVideoZoom(ctx);
-                if (!imagePhoneActive) {
+                if (!phoneVisible) {
                     drawMockupAndMedia(ctx, containerX, containerY, containerWidth, containerHeight, video!, false);
                 }
                 ctx.restore();
 
-                if (imagePhoneActive && imagePhoneCanvasRef.current) {
+                if (phoneVisible && imagePhoneCanvasRef.current) {
                     drawPhone3DCompositeWithZoom(ctx, canvasWidth, canvasHeight, frameTime, zoomState, highQuality, pivotX, pivotY);
 
                 }
@@ -1637,7 +1923,7 @@ function VideoCanvasInner({
 
         ctx.save();
         applyVideoZoom(ctx);
-        await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, false);
+        await renderCanvasElements(ctx, canvasElements, canvasWidth, canvasHeight, false, frameTime);
         ctx.restore();
 
         await drawCameraOverlay(ctx, canvasWidth, canvasHeight);
@@ -1653,14 +1939,20 @@ function VideoCanvasInner({
         pivotX: number,
         pivotY: number,
     ) => {
+        const phoneAnimation = getMockupAnimationState(imagePhoneAnimation, _frameTime);
+        if (!phoneAnimation.visible) return;
+        const phoneTransform = getMockupTransformState(imagePhoneAnimation, _frameTime, {
+            x: imagePhoneX, y: imagePhoneY, scale: imagePhoneScale,
+            rotationX: imagePhoneRotX, rotationY: imagePhoneRotY, rotationZ: imagePhoneRotZ,
+        });
         const phoneGL = imagePhoneCanvasRef.current!;
         const domW = canvasDimensions?.width ?? canvasWidth;
         const pxScale = canvasWidth / domW;
         const zScale = zs.scale;
         const centerX = canvasWidth / 2;
         const centerY = canvasHeight / 2;
-        const baseCx = centerX + imagePhoneX * pxScale;
-        const baseCy = centerY + imagePhoneY * pxScale;
+        const baseCx = centerX + (phoneTransform.x + phoneAnimation.translateX) * pxScale;
+        const baseCy = centerY + (phoneTransform.y + phoneAnimation.translateY) * pxScale;
 
         const phoneCx = pivotX + zScale * (baseCx - pivotX);
         const phoneCy = pivotY + zScale * (baseCy - pivotY);
@@ -1668,8 +1960,11 @@ function VideoCanvasInner({
         const measuredDims = imagePhoneApiRef.current?.getVisualSize?.();
         const deviceDims = measuredDims ?? DEVICE_3D_DIMENSIONS[imagePhoneDevice] ?? { width: PHONE_W, height: PHONE_H };
 
-        const drawW = deviceDims.width * imagePhoneScale * pxScale * zScale;
-        const drawH = deviceDims.height * imagePhoneScale * pxScale * zScale;
+        const drawW = deviceDims.width * phoneTransform.scale * phoneAnimation.scale * pxScale * zScale;
+        const drawH = deviceDims.height * phoneTransform.scale * phoneAnimation.scale * pxScale * zScale;
+
+        c.save();
+        c.globalAlpha *= phoneAnimation.opacity;
 
         const hasBuiltInShadow = imagePhoneApiRef.current?.hasBuiltInShadow ?? false;
         if (imagePhoneShadow > 0.01 && !hasBuiltInShadow) {
@@ -1693,6 +1988,7 @@ function VideoCanvasInner({
         }
 
         if (highQuality) {
+            imagePhoneApiRef.current?.setRotation?.(phoneTransform.rotationX, phoneTransform.rotationY, phoneTransform.rotationZ);
             imagePhoneApiRef.current?.renderAt(drawW, drawH);
             c.drawImage(phoneGL, phoneCx - drawW / 2, phoneCy - drawH / 2, drawW, drawH);
             imagePhoneApiRef.current?.restorePreview();
@@ -1703,6 +1999,7 @@ function VideoCanvasInner({
         if (effectivePhoneMaskConfig?.enabled) {
             applyGradientMaskToRegion(c, phoneCx - drawW / 2, phoneCy - drawH / 2, drawW, drawH, effectivePhoneMaskConfig);
         }
+        c.restore();
     };
 
     const drawCameraOverlay = async (
@@ -1909,6 +2206,8 @@ function VideoCanvasInner({
                     onTimeUpdate={onTimeUpdate}
                     onLoadedMetadata={onLoadedMetadata}
                     onEnded={onEnded}
+                    previewScale={previewScale}
+                    isPlaying={isPlaying}
                 />
             </div>
         ) : (
@@ -1924,6 +2223,7 @@ function VideoCanvasInner({
         hasMedia, mediaType, videoUrl, videoRef, imageUrl, imageRef,
         cropArea, hasMask, hasMockup, maskStyles, currentThumbnail, isVideoHovered,
         onTimeUpdate, onLoadedMetadata, onEnded, onVideoUpload, onImageUpload, isUploading,
+        previewScale, isPlaying,
     ]);
 
     const handleHitTestElementSelect = useCallback((id: string | null) => {
@@ -2068,7 +2368,34 @@ function VideoCanvasInner({
                             >
                                 {!(mediaType === "image" && apply3DToBackground) && (
                                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                                        <div className="absolute transition-all duration-200" style={{ inset: backgroundBlur > 0 ? `-${backgroundBlur}px` : '0', ...(shouldShowCustomColor && backgroundColorCss ? backgroundColorCss.startsWith('#') || backgroundColorCss.startsWith('rgb') ? { backgroundColor: backgroundColorCss } : { backgroundImage: backgroundColorCss } : (shouldShowCustomImage || shouldShowUnsplashOverride) ? { backgroundImage: `url('${shouldShowCustomImage ? selectedImageUrl : unsplashOverrideUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : shouldShowWallpaper ? { backgroundImage: `url('${wallpaperUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : { backgroundColor: 'transparent' }), filter: backgroundBlur > 0 ? `blur(${backgroundBlur * 0.4}px)` : 'none', }} />
+                                        {shouldShowBackgroundVideo ? (
+                                            <div
+                                                className="absolute transition-all duration-200"
+                                                style={{
+                                                    left: `${backgroundVideoTransform.x}%`,
+                                                    top: `${backgroundVideoTransform.y}%`,
+                                                    width: `${backgroundVideoTransform.width}%`,
+                                                    height: `${backgroundVideoTransform.height}%`,
+                                                    transform: "translate(-50%, -50%)",
+                                                }}
+                                            >
+                                                <video
+                                                    ref={backgroundVideoRef}
+                                                    src={selectedBackgroundVideoUrl}
+                                                    className="absolute inset-0 h-full w-full object-cover"
+                                                    style={{
+                                                        filter: backgroundBlur > 0 ? `blur(${backgroundBlur * 0.4}px)` : "none",
+                                                        transform: backgroundBlur > 0 ? `scale(${1 + backgroundBlur / 150})` : "none",
+                                                    }}
+                                                    muted
+                                                    loop
+                                                    playsInline
+                                                    preload="auto"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="absolute transition-all duration-200" style={{ inset: backgroundBlur > 0 ? `-${backgroundBlur}px` : '0', ...(shouldShowCustomColor && backgroundColorCss ? backgroundColorCss.startsWith('#') || backgroundColorCss.startsWith('rgb') ? { backgroundColor: backgroundColorCss } : { backgroundImage: backgroundColorCss } : (shouldShowCustomImage || shouldShowUnsplashOverride) ? { backgroundImage: `url('${shouldShowCustomImage ? selectedImageUrl : unsplashOverrideUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : shouldShowWallpaper ? { backgroundImage: `url('${wallpaperUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : { backgroundColor: 'transparent' }), filter: backgroundBlur > 0 ? `blur(${backgroundBlur * 0.4}px)` : 'none', }} />
+                                        )}
                                     </div>
                                 )}
 
@@ -2091,7 +2418,34 @@ function VideoCanvasInner({
                                     {/* FONDO 3D: Solo se renderiza aquí adentro cuando el modo imagen 3D está activo */}
                                     {(mediaType === "image" && apply3DToBackground) && (
                                         <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0, transform: 'translateZ(-1px)' }}>
-                                            <div className="absolute transition-all duration-200" style={{ inset: '-50%', ...(shouldShowCustomColor && backgroundColorCss ? backgroundColorCss.startsWith('#') || backgroundColorCss.startsWith('rgb') ? { backgroundColor: backgroundColorCss } : { backgroundImage: backgroundColorCss } : (shouldShowCustomImage || shouldShowUnsplashOverride) ? { backgroundImage: `url('${shouldShowCustomImage ? selectedImageUrl : unsplashOverrideUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : shouldShowWallpaper ? { backgroundImage: `url('${wallpaperUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : { backgroundColor: 'transparent' }), filter: backgroundBlur > 0 ? `blur(${backgroundBlur * 0.4}px)` : 'none', }} />
+                                            {shouldShowBackgroundVideo ? (
+                                                <div
+                                                    className="absolute transition-all duration-200"
+                                                    style={{
+                                                        left: `${backgroundVideoTransform.x}%`,
+                                                        top: `${backgroundVideoTransform.y}%`,
+                                                        width: `${backgroundVideoTransform.width}%`,
+                                                        height: `${backgroundVideoTransform.height}%`,
+                                                        transform: "translate(-50%, -50%) translateZ(-1px)",
+                                                    }}
+                                                >
+                                                    <video
+                                                        ref={backgroundVideoRef}
+                                                        src={selectedBackgroundVideoUrl}
+                                                        className="absolute inset-0 h-full w-full object-cover"
+                                                        style={{
+                                                            filter: backgroundBlur > 0 ? `blur(${backgroundBlur * 0.4}px)` : "none",
+                                                            transform: backgroundBlur > 0 ? `scale(${1 + backgroundBlur / 150})` : "none",
+                                                        }}
+                                                        muted
+                                                        loop
+                                                        playsInline
+                                                        preload="auto"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="absolute transition-all duration-200" style={{ inset: '-50%', ...(shouldShowCustomColor && backgroundColorCss ? backgroundColorCss.startsWith('#') || backgroundColorCss.startsWith('rgb') ? { backgroundColor: backgroundColorCss } : { backgroundImage: backgroundColorCss } : (shouldShowCustomImage || shouldShowUnsplashOverride) ? { backgroundImage: `url('${shouldShowCustomImage ? selectedImageUrl : unsplashOverrideUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : shouldShowWallpaper ? { backgroundImage: `url('${wallpaperUrl}')`, backgroundSize: 'cover', backgroundPosition: 'center', } : { backgroundColor: 'transparent' }), filter: backgroundBlur > 0 ? `blur(${backgroundBlur * 0.4}px)` : 'none', }} />
+                                            )}
                                         </div>
                                     )}
                                     {/* Capa 2A: Canvas elements BEHIND video — sin rotación 3D */}
@@ -2114,6 +2468,7 @@ function VideoCanvasInner({
                                         setElementCorners={setElementCorners}
                                         editingTextId={editingTextId}
                                         onTextEditEnd={handleTextEditEnd}
+                                        currentTime={mediaType === "image" ? -1 : currentTime}
                                     />
 
                                     {/* 3D rotation layer — solo envuelve el mockup, el fondo queda plano */}
@@ -2141,7 +2496,7 @@ function VideoCanvasInner({
                                                 // Hide the video layer while a motion template is active;
                                                 // the video element stays in the DOM so playback/timing continues.
                                                 // In image mode, also hide when the phone overlay is active.
-                                                opacity: imagePhoneActive ? 0 : 1,
+                                                opacity: imagePhoneActive && phonePreviewAnimation.visible ? 0 : 1,
                                                 transition: 'opacity 0.25s ease, padding 0.2s',
                                                 ...(mediaType === "image" && imageTransform && !apply3DToBackground ? {
                                                     perspective: `${imageTransform.perspective || 600}px`,
@@ -2160,13 +2515,14 @@ function VideoCanvasInner({
                                                         ? `
                                                         translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) 
                                                         rotate(${videoTransform.rotation}deg)
+                                                        scale(${videoTransform.scale ?? 1})
                                                         rotateX(${imageTransform.rotateX}deg)
                                                         rotateY(${imageTransform.rotateY}deg)
                                                         rotateZ(${imageTransform.rotateZ}deg)
                                                         scale(${imageTransform.scale * imageZoomScale})
                                                         translateY(${imageTransform.translateY}%)
                                                       `
-                                                        : `translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) rotate(${videoTransform.rotation}deg)`,
+                                                        : `translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) rotate(${videoTransform.rotation}deg) scale(${videoTransform.scale ?? 1})`,
                                                     cursor: isDraggingVideo ? 'move' : (isVideoHovered && hasMedia ? 'move' : 'default'),
                                                     transition: (isDraggingVideo || isDraggingRotation)
                                                         ? 'none' : (mediaType === "image" && imageTransform && !apply3DToBackground)
@@ -2182,7 +2538,7 @@ function VideoCanvasInner({
                                                 }}
                                                 onMouseDown={(e) => {
                                                     if (!hasMedia || !onVideoTransformChange) return;
-                                                    if ((e.target as HTMLElement).closest('[data-rotation-handle]')) return;
+                                                    if ((e.target as HTMLElement).closest('[data-rotation-handle], [data-resize-handle]')) return;
                                                     e.preventDefault();
                                                     wasDragRef.current = false;
 
@@ -2215,7 +2571,7 @@ function VideoCanvasInner({
                                                 }}
                                                 onMouseMove={(e) => { if (hasMedia) setVideoHoverCorner(getNearestCorner(e, videoTransform.rotation)); }}
                                                 onClick={(e) => {
-                                                    if ((e.target as HTMLElement).closest('[data-rotation-handle]')) return;
+                                                    if ((e.target as HTMLElement).closest('[data-rotation-handle], [data-resize-handle]')) return;
                                                     if (!onMockupClick) return;
                                                     if (mockupId === "none" || mockupId === undefined) return;
                                                     // Only fire if pointer stayed within CLICK_THRESHOLD (i.e. a click, not a drag)
@@ -2280,6 +2636,44 @@ function VideoCanvasInner({
                                                         />
                                                     )}
 
+                                                    {isVideoSelected && hasMedia && hasMockup && onVideoTransformChange && !isDraggingRotation && (
+                                                        <>
+                                                            {(["top-left", "top-right", "bottom-left", "bottom-right"] as const).map((corner) => (
+                                                                <button
+                                                                    key={corner}
+                                                                    type="button"
+                                                                    data-resize-handle
+                                                                    aria-label={`Resize 2D mockup from ${corner}`}
+                                                                    onMouseDown={(event) => {
+                                                                        if (event.button !== 0) return;
+                                                                        event.preventDefault();
+                                                                        event.stopPropagation();
+                                                                        const rect = videoContainerRef.current?.getBoundingClientRect();
+                                                                        if (!rect) return;
+                                                                        const centerX = rect.left + rect.width / 2;
+                                                                        const centerY = rect.top + rect.height / 2;
+                                                                        videoResizeDragRef.current = {
+                                                                            centerX,
+                                                                            centerY,
+                                                                            startDistance: Math.hypot(event.clientX - centerX, event.clientY - centerY),
+                                                                            initialScale: videoTransform.scale ?? 1,
+                                                                        };
+                                                                        setIsResizingVideo(true);
+                                                                    }}
+                                                                    className="absolute z-30 size-3 rounded-[2px] border-2 border-white bg-blue-600 shadow-sm"
+                                                                    style={{
+                                                                        left: corner.endsWith("left") ? -6 : undefined,
+                                                                        right: corner.endsWith("right") ? -6 : undefined,
+                                                                        top: corner.startsWith("top") ? -6 : undefined,
+                                                                        bottom: corner.startsWith("bottom") ? -6 : undefined,
+                                                                        cursor: corner === "top-left" || corner === "bottom-right" ? "nwse-resize" : "nesw-resize",
+                                                                        transform: `scale(${1 / Math.max(0.2, videoTransform.scale ?? 1)})`,
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                        </>
+                                                    )}
+
                                                     <div
                                                         className="w-full h-full"
                                                         style={hasMask && hasMockup ? maskStyles : {}}
@@ -2299,8 +2693,8 @@ function VideoCanvasInner({
                                                 className="absolute inset-0 flex items-center justify-center pointer-events-none z-50 transition-transform"
                                                 style={{
                                                     transform: mediaType === "image" && imageTransform && !apply3DToBackground
-                                                        ? `translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) rotate(${videoTransform.rotation}deg) rotateX(${imageTransform.rotateX}deg) rotateY(${imageTransform.rotateY}deg) rotateZ(${imageTransform.rotateZ}deg) translateY(${imageTransform.translateY}%)`
-                                                        : `translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) rotate(${videoTransform.rotation}deg)`,
+                                                        ? `translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) rotate(${videoTransform.rotation}deg) scale(${videoTransform.scale ?? 1}) rotateX(${imageTransform.rotateX}deg) rotateY(${imageTransform.rotateY}deg) rotateZ(${imageTransform.rotateZ}deg) translateY(${imageTransform.translateY}%)`
+                                                        : `translate(${videoTransform.translateX}%, ${videoTransform.translateY}%) rotate(${videoTransform.rotation}deg) scale(${videoTransform.scale ?? 1})`,
                                                     transformStyle: mediaType === "image" && !apply3DToBackground ? 'preserve-3d' : undefined,
                                                 }}
                                             >
@@ -2328,6 +2722,7 @@ function VideoCanvasInner({
                                         setElementCorners={setElementCorners}
                                         editingTextId={editingTextId}
                                         onTextEditEnd={handleTextEditEnd}
+                                        currentTime={mediaType === "image" ? -1 : currentTime}
                                     />
 
                                     {/* Capa HIT: invisible, todos los elementos, para recibir eventos */}
@@ -2355,6 +2750,7 @@ function VideoCanvasInner({
                                         editingTextId={editingTextId}
                                         onDoubleClickText={handleDoubleClickText}
                                         onTextEditEnd={handleTextEditEnd}
+                                        currentTime={mediaType === "image" ? -1 : currentTime}
                                     />
 
                                     {/* ── 3D phone overlay (video & image mode) ── */}
@@ -2367,11 +2763,12 @@ function VideoCanvasInner({
                                             />
                                             <ControlsPopup />
                                             <div
-                                                className="absolute animate-in fade-in zoom-in-95 duration-300"
+                                                className="absolute"
                                                 style={{
                                                     left: "50%",
                                                     top: "50%",
-                                                    transform: `translate(calc(-50% + ${imagePhoneX}px), calc(-50% + ${imagePhoneY}px))`,
+                                                    transform: `translate(calc(-50% + ${phonePreviewTransform.x + phonePreviewAnimation.translateX}px), calc(-50% + ${phonePreviewTransform.y + phonePreviewAnimation.translateY}px))`,
+                                                    opacity: phonePreviewAnimation.opacity,
                                                     transformOrigin: "center center",
                                                     pointerEvents: "none",
                                                     userSelect: "none",
@@ -2391,7 +2788,7 @@ function VideoCanvasInner({
                                             </div>
 
                                             <div
-                                                className="absolute animate-in fade-in zoom-in-95 duration-300"
+                                                className="absolute"
                                                 data-image-phone-overlay
                                                 onMouseEnter={() => setIsVideoHovered(true)}
                                                 onMouseLeave={() => setIsVideoHovered(false)}
@@ -2418,9 +2815,11 @@ function VideoCanvasInner({
                                                 style={{
                                                     left: "50%",
                                                     top: "50%",
-                                                    transform: `translate(calc(-50% + ${imagePhoneX}px), calc(-50% + ${imagePhoneY}px)) scale(${imagePhoneScale})`,
+                                                    transform: `translate(calc(-50% + ${phonePreviewTransform.x + phonePreviewAnimation.translateX}px), calc(-50% + ${phonePreviewTransform.y + phonePreviewAnimation.translateY}px)) scale(${phonePreviewTransform.scale * phonePreviewAnimation.scale})`,
                                                     transformOrigin: "center center",
-                                                    pointerEvents: "auto",
+                                                    opacity: phonePreviewAnimation.opacity,
+                                                    visibility: phonePreviewAnimation.visible ? "visible" : "hidden",
+                                                    pointerEvents: phonePreviewAnimation.visible ? "auto" : "none",
                                                     userSelect: "none",
                                                     filter:
                                                         imagePhoneShadow > 0 && imagePhoneDevice !== "laptop"
@@ -2443,9 +2842,9 @@ function VideoCanvasInner({
                                                         openingProgress={imagePhoneOpening}
                                                         imageMaskConfig={effectivePhoneMaskConfig}
                                                         cropArea={cropArea}
-                                                        initialRotationX={imagePhoneRotX}
-                                                        initialRotationY={imagePhoneRotY}
-                                                        initialRotationZ={imagePhoneRotZ}
+                                                        initialRotationX={phonePreviewTransform.rotationX}
+                                                        initialRotationY={phonePreviewTransform.rotationY}
+                                                        initialRotationZ={phonePreviewTransform.rotationZ}
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
@@ -2459,6 +2858,8 @@ function VideoCanvasInner({
                                                         environment={viewer3D.environment}
                                                         isSelected={isVideoSelected}
                                                         isHovered={isVideoHovered}
+                                                        isPlaying={isPlaying}
+                                                        previewDpr={previewDpr}
                                                     />
                                                 ) : activePhoneDevice === "iphone-13-pro-max" ? (
                                                     <IPhone13ProMax3DViewer
@@ -2467,9 +2868,9 @@ function VideoCanvasInner({
                                                         videoElement={mediaType === "video" ? videoRef.current : undefined}
                                                         imageMaskConfig={effectivePhoneMaskConfig}
                                                         cropArea={cropArea}
-                                                        initialRotationX={imagePhoneRotX}
-                                                        initialRotationY={imagePhoneRotY}
-                                                        initialRotationZ={imagePhoneRotZ}
+                                                        initialRotationX={phonePreviewTransform.rotationX}
+                                                        initialRotationY={phonePreviewTransform.rotationY}
+                                                        initialRotationZ={phonePreviewTransform.rotationZ}
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
@@ -2483,6 +2884,8 @@ function VideoCanvasInner({
                                                         environment={viewer3D.environment}
                                                         isSelected={isVideoSelected}
                                                         isHovered={isVideoHovered}
+                                                        isPlaying={isPlaying}
+                                                        previewDpr={previewDpr}
                                                     />
                                                 ) : activePhoneDevice === "iphone-17-pro-max" ? (
                                                     <IPhone17ProMax3DViewer
@@ -2491,9 +2894,9 @@ function VideoCanvasInner({
                                                         videoElement={mediaType === "video" ? videoRef.current : undefined}
                                                         imageMaskConfig={effectivePhoneMaskConfig}
                                                         cropArea={cropArea}
-                                                        initialRotationX={imagePhoneRotX}
-                                                        initialRotationY={imagePhoneRotY}
-                                                        initialRotationZ={imagePhoneRotZ}
+                                                        initialRotationX={phonePreviewTransform.rotationX}
+                                                        initialRotationY={phonePreviewTransform.rotationY}
+                                                        initialRotationZ={phonePreviewTransform.rotationZ}
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
@@ -2507,6 +2910,8 @@ function VideoCanvasInner({
                                                         environment={viewer3D.environment}
                                                         isSelected={isVideoSelected}
                                                         isHovered={isVideoHovered}
+                                                        isPlaying={isPlaying}
+                                                        previewDpr={previewDpr}
                                                     />
                                                 ) : activePhoneDevice === "double_iphone_13_pro" ? (
                                                     <DoubleIPhone3DViewer
@@ -2515,9 +2920,9 @@ function VideoCanvasInner({
                                                         videoElement={mediaType === "video" ? videoRef.current : undefined}
                                                         imageMaskConfig={effectivePhoneMaskConfig}
                                                         cropArea={cropArea}
-                                                        initialRotationX={imagePhoneRotX}
-                                                        initialRotationY={imagePhoneRotY}
-                                                        initialRotationZ={imagePhoneRotZ}
+                                                        initialRotationX={phonePreviewTransform.rotationX}
+                                                        initialRotationY={phonePreviewTransform.rotationY}
+                                                        initialRotationZ={phonePreviewTransform.rotationZ}
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
@@ -2530,6 +2935,8 @@ function VideoCanvasInner({
                                                         environment={viewer3D.environment}
                                                         isSelected={isVideoSelected}
                                                         isHovered={isVideoHovered}
+                                                        isPlaying={isPlaying}
+                                                        previewDpr={previewDpr}
                                                     />
                                                 ) : activePhoneDevice === "ipad_mini_6_2021" ? (
                                                     <IPadMini63DViewer
@@ -2538,9 +2945,9 @@ function VideoCanvasInner({
                                                         videoElement={mediaType === "video" ? videoRef.current : undefined}
                                                         imageMaskConfig={effectivePhoneMaskConfig}
                                                         cropArea={cropArea}
-                                                        initialRotationX={imagePhoneRotX}
-                                                        initialRotationY={imagePhoneRotY}
-                                                        initialRotationZ={imagePhoneRotZ}
+                                                        initialRotationX={phonePreviewTransform.rotationX}
+                                                        initialRotationY={phonePreviewTransform.rotationY}
+                                                        initialRotationZ={phonePreviewTransform.rotationZ}
                                                         onRotationChange={handlePhoneRotationChange}
                                                         onMount={handlePhoneMount}
                                                         onApi={handlePhoneApi}
@@ -2553,6 +2960,8 @@ function VideoCanvasInner({
                                                         environment={viewer3D.environment}
                                                         isSelected={isVideoSelected}
                                                         isHovered={isVideoHovered}
+                                                        isPlaying={isPlaying}
+                                                        previewDpr={previewDpr}
                                                     />
 
                                                 ) : (
@@ -2562,9 +2971,9 @@ function VideoCanvasInner({
                                                         videoElement={mediaType === "video" ? videoRef.current : undefined}
                                                         imageMaskConfig={effectivePhoneMaskConfig}
                                                         cropArea={cropArea}
-                                                        initialRotationX={imagePhoneRotX}
-                                                        initialRotationY={imagePhoneRotY}
-                                                        initialRotationZ={imagePhoneRotZ}
+                                                        initialRotationX={phonePreviewTransform.rotationX}
+                                                        initialRotationY={phonePreviewTransform.rotationY}
+                                                        initialRotationZ={phonePreviewTransform.rotationZ}
                                                         modelUrl={imagePhoneModelUrl}
                                                         scale={1}
                                                         zoom={1}
@@ -2579,9 +2988,85 @@ function VideoCanvasInner({
                                                         environment={viewer3D.environment}
                                                         isSelected={isVideoSelected}
                                                         isHovered={isVideoHovered}
+                                                        isPlaying={isPlaying}
+                                                        previewDpr={previewDpr}
                                                     />
                                                 )}
                                             </div>
+
+                                            {isVideoSelected && phonePreviewAnimation.visible && (
+                                                <div
+                                                    aria-label="Mobile mockup transform controls"
+                                                    style={{
+                                                        position: "absolute",
+                                                        left: "50%",
+                                                        top: "50%",
+                                                        width: phoneControlDimensions.width,
+                                                        height: phoneControlDimensions.height,
+                                                        transform: `translate(calc(-50% + ${phonePreviewTransform.x + phonePreviewAnimation.translateX}px), calc(-50% + ${phonePreviewTransform.y + phonePreviewAnimation.translateY}px)) scale(${phonePreviewTransform.scale * phonePreviewAnimation.scale})`,
+                                                        transformOrigin: "center center",
+                                                        border: "2px solid rgb(59 130 246)",
+                                                        borderRadius: 10,
+                                                        boxShadow: "0 0 0 1px rgba(255,255,255,.7)",
+                                                        pointerEvents: "none",
+                                                        zIndex: 10000,
+                                                    }}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        aria-label="Drag mobile mockup"
+                                                        onPointerDown={(event) => beginPhoneTransform(event, "move")}
+                                                        onPointerMove={movePhoneTransform}
+                                                        onPointerUp={endPhoneTransform}
+                                                        onPointerCancel={endPhoneTransform}
+                                                        style={{
+                                                            position: "absolute",
+                                                            left: "50%",
+                                                            top: -34,
+                                                            transform: `translateX(-50%) scale(${1 / Math.max(0.2, phonePreviewTransform.scale * phonePreviewAnimation.scale)})`,
+                                                            transformOrigin: "bottom center",
+                                                            pointerEvents: "auto",
+                                                            cursor: isTransformingPhone ? "grabbing" : "grab",
+                                                            borderRadius: 999,
+                                                            border: "1px solid rgba(255,255,255,.55)",
+                                                            background: "rgb(37 99 235)",
+                                                            color: "white",
+                                                            padding: "4px 10px",
+                                                            fontSize: 11,
+                                                            fontWeight: 600,
+                                                            whiteSpace: "nowrap",
+                                                        }}
+                                                    >
+                                                        Drag mockup
+                                                    </button>
+                                                    {(["top-left", "top-right", "bottom-left", "bottom-right"] as const).map((corner) => (
+                                                        <button
+                                                            key={corner}
+                                                            type="button"
+                                                            aria-label={`Resize mobile mockup from ${corner}`}
+                                                            onPointerDown={(event) => beginPhoneTransform(event, "resize", corner)}
+                                                            onPointerMove={movePhoneTransform}
+                                                            onPointerUp={endPhoneTransform}
+                                                            onPointerCancel={endPhoneTransform}
+                                                            style={{
+                                                                position: "absolute",
+                                                                width: 14,
+                                                                height: 14,
+                                                                padding: 0,
+                                                                border: "2px solid white",
+                                                                borderRadius: 3,
+                                                                background: "rgb(37 99 235)",
+                                                                pointerEvents: "auto",
+                                                                cursor: corner === "top-left" || corner === "bottom-right" ? "nwse-resize" : "nesw-resize",
+                                                                left: corner.endsWith("left") ? -8 : undefined,
+                                                                right: corner.endsWith("right") ? -8 : undefined,
+                                                                top: corner.startsWith("top") ? -8 : undefined,
+                                                                bottom: corner.startsWith("bottom") ? -8 : undefined,
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -2701,6 +3186,63 @@ function VideoCanvasInner({
                                 )}
 
                                 {/* Text tool crosshair overlay — captures clicks to place text */}
+                                {shouldShowBackgroundVideo && activeTool === "screenshot" && !(mediaType === "image" && apply3DToBackground) && onBackgroundVideoTransformChange && (
+                                    <div
+                                        data-background-video-transform
+                                        className="absolute select-none border-2 border-cyan-400/90 shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
+                                        style={{
+                                            left: `${backgroundVideoTransform.x}%`,
+                                            top: `${backgroundVideoTransform.y}%`,
+                                            width: `${backgroundVideoTransform.width}%`,
+                                            height: `${backgroundVideoTransform.height}%`,
+                                            transform: "translate(-50%, -50%)",
+                                            zIndex: 99990,
+                                            cursor: backgroundVideoInteraction?.mode === "move" ? "grabbing" : "grab",
+                                        }}
+                                        onMouseDown={(event) => {
+                                            if (event.button !== 0 || (event.target as HTMLElement).closest("[data-background-resize-handle]")) return;
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            backgroundVideoDragStartRef.current = {
+                                                clientX: event.clientX,
+                                                clientY: event.clientY,
+                                                transform: { ...backgroundVideoTransform },
+                                            };
+                                            setBackgroundVideoInteraction({ mode: "move" });
+                                        }}
+                                        onDoubleClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onBackgroundVideoTransformChange({ ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM });
+                                        }}
+                                    >
+                                        <div className="pointer-events-none absolute left-2 top-2 rounded bg-cyan-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-black shadow">
+                                            Background video
+                                        </div>
+                                        {BACKGROUND_RESIZE_HANDLES.map((handle) => (
+                                            <button
+                                                key={handle.id}
+                                                type="button"
+                                                data-background-resize-handle={handle.id}
+                                                aria-label={`Resize background video ${handle.id}`}
+                                                className={`absolute size-3 rounded-sm border border-cyan-700 bg-white shadow ${handle.className}`}
+                                                style={{ cursor: handle.cursor }}
+                                                onMouseDown={(event) => {
+                                                    if (event.button !== 0) return;
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    backgroundVideoDragStartRef.current = {
+                                                        clientX: event.clientX,
+                                                        clientY: event.clientY,
+                                                        transform: { ...backgroundVideoTransform },
+                                                    };
+                                                    setBackgroundVideoInteraction({ mode: "resize", handle: handle.id });
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
                                 {textToolActive && (
                                     <div
                                         className="absolute inset-0 cursor-crosshair"

@@ -7,6 +7,7 @@ import { FRAME_COLORS, FRAME_COLORS_DARK, MockupConfig, MockupFeatures, getMocku
 import { MOCKUPS, MOCKUP_CATEGORIES } from "@/lib/mockup-data";
 import { Button } from "@/components/ui/button";
 import { DetailPageHeader } from "@/components/ui/DetailHeaderMenu";
+import type { AspectRatio } from "@/types";
 
 export interface Mockup2dMenuProps {
   mockupId: string;
@@ -14,6 +15,8 @@ export interface Mockup2dMenuProps {
   onMockupChange?: (mockupId: string) => void;
   onMockupConfigChange?: (config: Partial<MockupConfig>) => void;
   onBack: () => void;
+  aspectRatio?: AspectRatio;
+  onAspectRatioChange?: (ratio: AspectRatio) => void;
 }
 
 export function Mockup2dMenu({
@@ -22,6 +25,8 @@ export function Mockup2dMenu({
   onMockupChange,
   onMockupConfigChange,
   onBack,
+  aspectRatio,
+  onAspectRatioChange,
 }: Mockup2dMenuProps) {
   const t = useTranslations("mockupMenu");
 
@@ -68,7 +73,7 @@ export function Mockup2dMenu({
               );
               const bgUrl =
                 categoryConfig?.bgUrl ||
-                "https://i.ibb.co/r2JQ3Gcy/minimal-02.jpg";
+                "/images/mockups/bg-browser.avif";
               return (
                 <div
                   className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -86,6 +91,28 @@ export function Mockup2dMenu({
             </div>
           </div>
         )}
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/50">
+            <Icon icon="mdi:aspect-ratio" width="15" aria-hidden="true" /> Whole frame ratio
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(["16:9", "9:16"] as const).map((ratio) => (
+              <button
+                key={ratio}
+                type="button"
+                onClick={() => onAspectRatioChange?.(ratio)}
+                aria-label={`Set whole frame to ${ratio}`}
+                aria-pressed={aspectRatio === ratio}
+                className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-colors ${aspectRatio === ratio ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/3 text-white/60 hover:bg-white/6"}`}
+              >
+                <span className="text-xs font-semibold">{ratio}</span>
+                {aspectRatio === ratio && <Icon icon="mdi:check-circle" width="16" aria-hidden="true" />}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] leading-relaxed text-white/35">Changes the complete background and export frame without changing the selected 2D device frame.</p>
+        </div>
 
         {features.hasDarkMode && (
           <fieldset className="flex items-center justify-between w-full gap-4">

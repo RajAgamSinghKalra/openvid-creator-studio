@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, lazy, Suspense, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense, useMemo, startTransition } from "react";
 import { toBlob } from 'html-to-image';
 import { Icon } from "@iconify/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { loadVideoFromIndexedDB, deleteRecordedVideo } from "@/hooks/useScreenRecording";
 import { useVideoUpload } from "@/hooks/useVideoUpload";
 import { useImageProjects } from "@/hooks/useImageProjects";
-import { getUploadedVideo, deleteUploadedVideo } from "@/lib/video-upload-cache";
+import { getUploadedVideo, deleteUploadedVideo, getVideoMetadata } from "@/lib/video-upload-cache";
 import { getUploadedImage, deleteUploadedImage } from "@/lib/image-upload-cache";
 import { useEditorMode } from "@/hooks/useEditorMode";
 import { useActiveTool } from "@/hooks/useActiveTool";
@@ -16,9 +16,9 @@ import { useVideoExport } from "@/hooks/useVideoExport";
 import { useVideoThumbnails, type VideoThumbnail } from "@/hooks/useVideoThumbnails";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { clearAllThumbnailCache } from "@/lib/thumbnail-cache";
-import { addVideoToLibrary, addVideoToLibraryWithMetadata, getLibraryVideoCount, getLibraryVideo, findExistingVideo } from "@/lib/videos-library";
-import { calculateTotalDuration, findNextClipPosition, getClipAtTime, splitClipAtTime, type VideoTrackClip } from "@/types/video-track.types";
-import type { ExportQuality, BackgroundTab, VideoCanvasHandle, BackgroundColorConfig, AspectRatio, CropArea, ZoomFragment, AudioTrack, ImageExportFormat } from "@/types";
+import { addVideoToSessionLibrary, addVideoToLibraryWithMetadata, getLibraryVideoCount, getLibraryVideo, findExistingVideo, persistLibraryVideos } from "@/lib/videos-library";
+import { calculateTotalDuration, findNextClipPosition, getClipAtTime, getClipPlaybackRate, getClipTimelineDuration, splitClipAtTime, timelineToClipTime as mapTimelineToClipTime, type VideoTrackClip } from "@/types/video-track.types";
+import type { ExportQuality, BackgroundTab, VideoCanvasHandle, BackgroundColorConfig, BackgroundVideoItem, AspectRatio, CropArea, ZoomFragment, AudioTrack, ImageExportFormat } from "@/types";
 import type { TrimRange } from "@/types/timeline.types";
 import type { MockupConfig, MenuPage } from "@/types/mockup.types";
 import type { EditorState } from "@/types/editor-state.types";
@@ -34,6 +34,7 @@ import { ToolsSidebar } from "@/app/components/ui/editor/ToolsSidebar";
 import { MobileToolsMenu } from "@/app/components/ui/editor/MobileToolsMenu";
 import { MobileControlPanel } from "@/app/components/ui/editor/MobileControlPanel";
 import { EditorTopBar } from "@/app/components/ui/editor/EditorTopBar";
+import { LocalProjectsDialog } from "@/app/components/ui/editor/LocalProjectsDialog";
 import { VideoCanvas } from "@/app/components/ui/editor/VideoCanvas";
 import { PlayerControls } from "@/app/components/ui/editor/PlayerControls";
 import { findValidFragmentPosition } from "@/app/components/ui/editor/ZoomFragmentTrackItem";
@@ -47,6 +48,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { TooltipAction } from "@/components/ui/tooltip-action";
 import { bgImagesDelete, bgImagesGetAll, bgImagesSave } from "@/lib/bg-images-idb";
+import { hydrateUploadedAudios, persistAudioAssets, stageAudioAsset } from "@/lib/audio-assets";
+import { deleteLocalVideoProject, getCurrentLocalVideoProjectId, getLocalVideoProject, listLocalVideoProjects, putLocalVideoProject, setCurrentLocalVideoProjectId } from "@/lib/local-projects";
+import type { LocalVideoProjectPreview } from "@/types/local-project.types";
+import { bgVideosDelete, bgVideosGetAll, bgVideosSave } from "@/lib/bg-videos-idb";
+import { DEFAULT_BACKGROUND_VIDEO_TRANSFORM } from "@/types/background.types";
+import { DEFAULT_MOCKUP_ANIMATION } from "@/types/mockup-animation.types";
+import type { PreviewQuality, ProxyStatus } from "@/types/player-control.types";
+import { createSessionVideoProxy, disposeSessionVideoProxy, type SessionVideoProxy } from "@/lib/session-video-proxies";
 
 const ControlPanel = lazy(() => import("@/app/components/ui/editor/ControlPanel").then(mod => ({ default: mod.ControlPanel })));
 const Timeline = lazy(() => import("@/app/components/ui/editor/Timeline").then(mod => ({ default: mod.Timeline })));
@@ -54,6 +63,48 @@ const ExportOverlay = lazy(() => import("@/app/components/ui/ExportOverlay").the
 const VideoCropperModal = lazy(() => import("@/app/components/ui/editor/VideoCropperModal").then(mod => ({ default: mod.VideoCropperModal })));
 const ImageCropperModal = lazy(() => import("@/app/components/ui/editor/ImageCropperModal").then(mod => ({ default: mod.ImageCropperModal })));
 const PhotoEditorPlaceholder = lazy(() => import("@/app/components/ui/editor/PhotoEditorPlaceholder").then(mod => ({ default: mod.PhotoEditorPlaceholder })));
+
+function readVideoDuration(file: Blob): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        const cleanup = () => {
+            video.removeAttribute("src");
+            video.load();
+            URL.revokeObjectURL(url);
+        };
+
+        video.preload = "metadata";
+        video.onloadedmetadata = () => {
+            const duration = Number.isFinite(video.duration) ? video.duration : 0;
+            cleanup();
+            resolve(duration);
+        };
+        video.onerror = () => {
+            cleanup();
+            reject(new Error("The selected background video could not be read."));
+        };
+        video.src = url;
+    });
+}
+
+function waitForVideoReady(video: HTMLVideoElement, timeoutMs = 15_000): Promise<void> {
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(() => finish(new Error("Timed out while changing preview media.")), timeoutMs);
+        const finish = (error?: Error) => {
+            window.clearTimeout(timeout);
+            video.removeEventListener("loadedmetadata", onReady);
+            video.removeEventListener("error", onError);
+            if (error) reject(error);
+            else resolve();
+        };
+        const onReady = () => finish();
+        const onError = () => finish(new Error("The preview media could not be loaded."));
+        video.addEventListener("loadedmetadata", onReady, { once: true });
+        video.addEventListener("error", onError, { once: true });
+    });
+}
 
 export default function Editor() {
     // Editor mode (video/photo) from URL params
@@ -76,6 +127,7 @@ export default function Editor() {
         imagePhoneShadow, setImagePhoneShadow,
         imagePhoneShadowColor, setImagePhoneShadowColor,
         imagePhoneRefWidth, setImagePhoneRefWidth,
+        imagePhoneAnimation, setImagePhoneAnimation,
     } = useMockup3dContext();
 
     // Undo/Redo system - centralized state management
@@ -171,17 +223,26 @@ export default function Editor() {
     // MockupMenu would not fire).
     const [mockupMenuNavigationToken, setMockupMenuNavigationToken] = useState(0);
 
-    // Video transform state (rotation and position)
-    const [videoTransform, setVideoTransform] = useState<{ rotation: number; translateX: number; translateY: number }>({
+    // Video/2D mockup transform state (rotation, position and independent scale)
+    const [videoTransform, setVideoTransform] = useState<{ rotation: number; translateX: number; translateY: number; scale: number }>({
         rotation: 0,
         translateX: 0,
         translateY: 0,
+        scale: 1,
     });
 
     const [uploadedImages, setUploadedImages] = useState<string[]>([]);
     const bgImgUrlToIdRef = useRef<Map<string, string>>(new Map());
     const [selectedImageUrl, setSelectedImageUrl] = useState<string>("");
     const [unsplashBgUrl, setUnsplashBgUrl] = useState<string>("");
+    const [uploadedBackgroundVideos, setUploadedBackgroundVideos] = useState<BackgroundVideoItem[]>([]);
+    const [selectedBackgroundVideoId, setSelectedBackgroundVideoId] = useState<string>("");
+    const [backgroundVideoTransform, setBackgroundVideoTransform] = useState(() => ({ ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM }));
+    const backgroundVideoUrlsRef = useRef<Map<string, string>>(new Map());
+    const selectedBackgroundVideoUrl = useMemo(
+        () => uploadedBackgroundVideos.find(video => video.id === selectedBackgroundVideoId)?.url ?? "",
+        [uploadedBackgroundVideos, selectedBackgroundVideoId]
+    );
 
     // Background color/gradient state
     const [backgroundColorConfig, setBackgroundColorConfig] = useState<BackgroundColorConfig | null>(null);
@@ -212,6 +273,10 @@ export default function Editor() {
     const [videoDuration, setVideoDuration] = useState<number>(0);
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
+    const [previewQuality, setPreviewQuality] = useState<PreviewQuality>("auto");
+    const [proxyStatus, setProxyStatus] = useState<ProxyStatus>("idle");
+    const [proxyProgress, setProxyProgress] = useState(0);
+    const [proxyCount, setProxyCount] = useState(0);
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<VideoCanvasHandle>(null);
     const isSwitchingClipRef = useRef<boolean>(false);
@@ -221,12 +286,28 @@ export default function Editor() {
     const [isDraggingPlayhead, setIsDraggingPlayhead] = useState<boolean>(false);
     const [trimRange, setTrimRange] = useState<TrimRange>({ start: 0, end: 0 });
     const animationFrameRef = useRef<number | null>(null);
+    const videoFrameCallbackRef = useRef<{ video: HTMLVideoElement; id: number } | null>(null);
+    const schedulePlaybackFrameRef = useRef<() => void>(() => {});
+    const cancelPlaybackFrameRef = useRef<() => void>(() => {});
     const justEndedRef = useRef<boolean>(false);
     const wasPlayingBeforeDragRef = useRef<boolean>(false);
     const isExportingRef = useRef(false);
     const [scrubTime, setScrubTime] = useState<number>(0);
     // Ref that is always in sync with scrubTime — avoids stale closure in handlePlayheadDragEnd
     const scrubTimeRef = useRef<number>(0);
+    const lastScrubMediaSeekRef = useRef(0);
+
+    useEffect(() => {
+        const saved = window.localStorage.getItem("openvid-preview-quality");
+        if (saved === "auto" || saved === "full" || saved === "half" || saved === "quarter") {
+            setPreviewQuality(saved);
+        }
+    }, []);
+
+    const handlePreviewQualityChange = useCallback((quality: PreviewQuality) => {
+        setPreviewQuality(quality);
+        window.localStorage.setItem("openvid-preview-quality", quality);
+    }, []);
 
     // Zoom fragments state
     const [zoomFragments, setZoomFragments] = useState<ZoomFragment[]>([]);
@@ -293,6 +374,8 @@ export default function Editor() {
                     selectedWallpaper,
                     backgroundBlur,
                     selectedImageUrl,
+                    selectedBackgroundVideoId,
+                    backgroundVideoTransform,
                     backgroundColorConfig,
                     padding,
                     roundedCorners,
@@ -307,6 +390,7 @@ export default function Editor() {
                         rotation: videoTransform.rotation,
                         translateX: videoTransform.translateX,
                         translateY: videoTransform.translateY,
+                        scale: videoTransform.scale,
                     },
                     imagePreview3D: imageTransform,
                     apply3DToBackground,
@@ -325,6 +409,7 @@ export default function Editor() {
                     imagePhoneShadow,
                     imagePhoneShadowColor,
                     imagePhoneRefWidth,
+                    imagePhoneAnimation,
                 });
             } catch (error) {
                 console.error("Auto-save failed:", error);
@@ -339,6 +424,8 @@ export default function Editor() {
         selectedWallpaper,
         backgroundBlur,
         selectedImageUrl,
+        selectedBackgroundVideoId,
+        backgroundVideoTransform,
         backgroundColorConfig,
         padding,
         roundedCorners,
@@ -366,7 +453,8 @@ export default function Editor() {
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
-        imagePhoneRefWidth
+        imagePhoneRefWidth,
+        imagePhoneAnimation
     ]);
 
     useEffect(() => {
@@ -378,6 +466,8 @@ export default function Editor() {
         selectedWallpaper,
         backgroundBlur,
         selectedImageUrl,
+        selectedBackgroundVideoId,
+        backgroundVideoTransform,
         backgroundColorConfig,
         padding,
         roundedCorners,
@@ -431,6 +521,8 @@ export default function Editor() {
         setSelectedWallpaper(currentProject.selectedWallpaper);
         setBackgroundBlur(currentProject.backgroundBlur);
         setSelectedImageUrl(currentProject.selectedImageUrl);
+        setSelectedBackgroundVideoId(currentProject.selectedBackgroundVideoId ?? "");
+        setBackgroundVideoTransform(currentProject.backgroundVideoTransform ?? { ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM });
         setBackgroundColorConfig(currentProject.backgroundColorConfig);
         setPadding(currentProject.padding);
         setRoundedCorners(currentProject.roundedCorners);
@@ -441,7 +533,7 @@ export default function Editor() {
         setMockupId(currentProject.mockupId);
         setMockupConfig(currentProject.mockupConfig);
         setCanvasElements(currentProject.canvasElements);
-        setVideoTransform(currentProject.imageTransform);
+        setVideoTransform({ ...currentProject.imageTransform, scale: currentProject.imageTransform.scale ?? 1 });
         setImageTransform(currentProject.imagePreview3D);
         setApply3DToBackground(currentProject.apply3DToBackground);
         setImageMaskConfig(currentProject.imageMaskConfig);
@@ -464,11 +556,12 @@ export default function Editor() {
         if (currentProject.imagePhoneShadow !== undefined) setImagePhoneShadow(currentProject.imagePhoneShadow);
         if (currentProject.imagePhoneShadowColor !== undefined) setImagePhoneShadowColor(currentProject.imagePhoneShadowColor);
         setImagePhoneRefWidth(currentProject.imagePhoneRefWidth ?? 0);
+        setImagePhoneAnimation(currentProject.imagePhoneAnimation ?? { ...DEFAULT_MOCKUP_ANIMATION });
 
         setTimeout(() => {
             isRestoringProjectRef.current = false;
         }, 500);
-    }, [currentProject, isPhotoMode, setImagePhoneActive, setImagePhoneX, setImagePhoneY, setImagePhoneScale, setImagePhoneRotX, setImagePhoneRotY, setImagePhoneRotZ, setImagePhonePerspective, setImagePhoneDevice, setImagePhonePresetId, setImagePhoneOpening, setImagePhoneShadow, setImagePhoneShadowColor, setImagePhoneRefWidth]);
+    }, [currentProject, isPhotoMode, setImagePhoneActive, setImagePhoneX, setImagePhoneY, setImagePhoneScale, setImagePhoneRotX, setImagePhoneRotY, setImagePhoneRotZ, setImagePhonePerspective, setImagePhoneDevice, setImagePhonePresetId, setImagePhoneOpening, setImagePhoneShadow, setImagePhoneShadowColor, setImagePhoneRefWidth, setImagePhoneAnimation]);
 
     // Image project handlers
     const handleSelectImageProject = useCallback(async (projectId: string) => {
@@ -510,6 +603,8 @@ export default function Editor() {
             setBackgroundTab("wallpaper");
             setSelectedWallpaper(0);
             setBackgroundBlur(0);
+            setSelectedBackgroundVideoId("");
+            setBackgroundVideoTransform({ ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM });
             setPadding(10);
             setRoundedCorners(10);
             setShadows(10);
@@ -539,6 +634,8 @@ export default function Editor() {
                     selectedWallpaper,
                     backgroundBlur,
                     selectedImageUrl,
+                    selectedBackgroundVideoId,
+                    backgroundVideoTransform,
                     backgroundColorConfig,
                     padding,
                     roundedCorners,
@@ -553,6 +650,7 @@ export default function Editor() {
                         rotation: videoTransform.rotation,
                         translateX: videoTransform.translateX,
                         translateY: videoTransform.translateY,
+                        scale: videoTransform.scale,
                     },
                     imagePreview3D: imageTransform,
                     apply3DToBackground,
@@ -572,7 +670,8 @@ export default function Editor() {
                     imagePhoneOpening,
                     imagePhoneShadow,
                     imagePhoneShadowColor,
-                    imagePhoneRefWidth
+                    imagePhoneRefWidth,
+                    imagePhoneAnimation
                 }
             );
 
@@ -589,6 +688,8 @@ export default function Editor() {
         selectedWallpaper,
         backgroundBlur,
         selectedImageUrl,
+        selectedBackgroundVideoId,
+        backgroundVideoTransform,
         backgroundColorConfig,
         padding,
         roundedCorners,
@@ -616,7 +717,8 @@ export default function Editor() {
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
-        imagePhoneRefWidth
+        imagePhoneRefWidth,
+        imagePhoneAnimation
     ]);
 
     // Screen capture handler - now creates a project
@@ -637,6 +739,8 @@ export default function Editor() {
                         selectedWallpaper,
                         backgroundBlur,
                         selectedImageUrl,
+                        selectedBackgroundVideoId,
+                        backgroundVideoTransform,
                         backgroundColorConfig,
                         padding,
                         roundedCorners,
@@ -651,6 +755,7 @@ export default function Editor() {
                             rotation: videoTransform.rotation,
                             translateX: videoTransform.translateX,
                             translateY: videoTransform.translateY,
+                            scale: videoTransform.scale,
                         },
                         imagePreview3D: imageTransform,
                         apply3DToBackground,
@@ -668,7 +773,8 @@ export default function Editor() {
                         imagePhoneOpening,
                         imagePhoneShadow,
                         imagePhoneShadowColor,
-                        imagePhoneRefWidth
+                        imagePhoneRefWidth,
+                        imagePhoneAnimation
                     }
                 );
 
@@ -687,6 +793,8 @@ export default function Editor() {
         selectedWallpaper,
         backgroundBlur,
         selectedImageUrl,
+        selectedBackgroundVideoId,
+        backgroundVideoTransform,
         backgroundColorConfig,
         padding,
         roundedCorners,
@@ -714,7 +822,8 @@ export default function Editor() {
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
-        imagePhoneRefWidth
+        imagePhoneRefWidth,
+        imagePhoneAnimation
     ]);
 
     // Unified image upload handler - always creates a new history entry to preserve existing projects
@@ -731,6 +840,8 @@ export default function Editor() {
                     selectedWallpaper,
                     backgroundBlur,
                     selectedImageUrl,
+                    selectedBackgroundVideoId,
+                    backgroundVideoTransform,
                     backgroundColorConfig,
                     padding,
                     roundedCorners,
@@ -745,6 +856,7 @@ export default function Editor() {
                         rotation: videoTransform.rotation,
                         translateX: videoTransform.translateX,
                         translateY: videoTransform.translateY,
+                        scale: videoTransform.scale,
                     },
                     imagePreview3D: imageTransform,
                     apply3DToBackground,
@@ -763,7 +875,8 @@ export default function Editor() {
                     imagePhoneOpening,
                     imagePhoneShadow,
                     imagePhoneShadowColor,
-                    imagePhoneRefWidth
+                    imagePhoneRefWidth,
+                    imagePhoneAnimation
                 }
             );
 
@@ -780,6 +893,8 @@ export default function Editor() {
         selectedWallpaper,
         backgroundBlur,
         selectedImageUrl,
+        selectedBackgroundVideoId,
+        backgroundVideoTransform,
         backgroundColorConfig,
         padding,
         roundedCorners,
@@ -806,7 +921,8 @@ export default function Editor() {
         imagePhoneOpening,
         imagePhoneShadow,
         imagePhoneShadowColor,
-        imagePhoneRefWidth
+        imagePhoneRefWidth,
+        imagePhoneAnimation
     ]);
 
     // Handler for drag & drop images on canvas (photo mode only)
@@ -889,7 +1005,7 @@ export default function Editor() {
             exportWidth = Math.round(exportWidth * scale);
             exportHeight = Math.round(exportHeight * scale);
 
-            const hasTransparentBackground = selectedWallpaper === -1;
+            const hasTransparentBackground = backgroundTab === "wallpaper" && selectedWallpaper === -1;
 
             // Temporarily clear ALL selection indicators (single, multi, and mockup border)
             // so they don't appear in the html-to-image capture
@@ -899,15 +1015,37 @@ export default function Editor() {
 
             await new Promise(resolve => setTimeout(resolve, 80));
 
-            const blob = await toBlob(previewContainer, {
-                quality,
-                cacheBust: false,
-                ...(hasTransparentBackground ? {} : { backgroundColor: '#09090B' }),
-                type: `image/${format}`,
-                canvasWidth: exportWidth,
-                canvasHeight: exportHeight,
-                pixelRatio: 1,
-            });
+            let blob: Blob | null;
+
+            if (backgroundTab === "video") {
+                // html-to-image does not reliably capture the current frame of a
+                // <video>. Reuse the frame renderer so static exports match the
+                // preview and include all background effects.
+                await canvasRef.current.drawFrame(true, currentTime);
+                const sourceCanvas = canvasRef.current.getExportCanvas();
+                if (!sourceCanvas) throw new Error("Rendered canvas not available");
+
+                const outputCanvas = document.createElement("canvas");
+                outputCanvas.width = exportWidth;
+                outputCanvas.height = exportHeight;
+                const outputContext = outputCanvas.getContext("2d");
+                if (!outputContext) throw new Error("Could not create export canvas");
+
+                outputContext.drawImage(sourceCanvas, 0, 0, exportWidth, exportHeight);
+                blob = await new Promise<Blob | null>((resolve) => {
+                    outputCanvas.toBlob(resolve, `image/${format}`, quality);
+                });
+            } else {
+                blob = await toBlob(previewContainer, {
+                    quality,
+                    cacheBust: false,
+                    ...(hasTransparentBackground ? {} : { backgroundColor: '#09090B' }),
+                    type: `image/${format}`,
+                    canvasWidth: exportWidth,
+                    canvasHeight: exportHeight,
+                    pixelRatio: 1,
+                });
+            }
 
             // Restore all selection state after capture
             if (prevSingleSelection) selectCanvasElement(prevSingleSelection);
@@ -934,7 +1072,7 @@ export default function Editor() {
             setImageExportProgress({ status: "error", progress: 0, message: `Export failed: ${errorMessage}` });
             setTimeout(() => setImageExportProgress({ status: "idle", progress: 0, message: "" }), 4000);
         }
-    }, [imageUrl, imageDimensions, selectedWallpaper, aspectRatio, customDimensions, selectedElementId, selectCanvasElement]);
+    }, [imageUrl, imageDimensions, backgroundTab, selectedWallpaper, aspectRatio, customDimensions, selectedElementId, selectCanvasElement, currentTime]);
     useEffect(() => {
         if (!isPhotoMode || !imageUrl || !canvasRef.current) {
             setCanvasImageUrl(null);
@@ -959,7 +1097,7 @@ export default function Editor() {
         return () => {
             clearTimeout(initialTimeout);
         };
-    }, [isPhotoMode, imageUrl, backgroundTab, selectedWallpaper, backgroundBlur, padding, roundedCorners, shadows, selectedImageUrl, backgroundColorConfig]);
+    }, [isPhotoMode, imageUrl, backgroundTab, selectedWallpaper, backgroundBlur, padding, roundedCorners, shadows, selectedImageUrl, selectedBackgroundVideoId, backgroundVideoTransform, backgroundColorConfig]);
 
     // Handle 3D preview selection
     const handleSelectPreview = useCallback((config: Preview3DConfig) => {
@@ -979,7 +1117,7 @@ export default function Editor() {
         setImageTransform(frontConfig);
         setApply3DToBackground(false);
         setImageMaskConfig(DEFAULT_MASK_CONFIG);
-        setVideoTransform({ rotation: 0, translateX: 0, translateY: 0 });
+        setVideoTransform({ rotation: 0, translateX: 0, translateY: 0, scale: 1 });
     }, []);
 
     // Videos library state
@@ -997,11 +1135,29 @@ export default function Editor() {
     useEffect(() => {
         videoClipsRef.current = videoClips;
     }, [videoClips]);
+
+    const recordVideoClipHistory = useCallback((clips: VideoTrackClip[], range?: TrimRange) => {
+        const duration = calculateTotalDuration(clips);
+        setEditorState(previous => ({
+            ...previous,
+            videoClips: clips,
+            trimRange: range ?? { start: 0, end: duration },
+        }));
+    }, [setEditorState]);
     const [selectedVideoClipId, setSelectedVideoClipId] = useState<string | null>(null);
+    const [localProjects, setLocalProjects] = useState<LocalVideoProjectPreview[]>([]);
+    const [currentLocalProjectId, setCurrentLocalProjectId] = useState<string | null>(null);
+    const [currentLocalProjectName, setCurrentLocalProjectName] = useState("");
+    const [localProjectsOpen, setLocalProjectsOpen] = useState(false);
+    const [localProjectsLoading, setLocalProjectsLoading] = useState(false);
+    const [localProjectSaving, setLocalProjectSaving] = useState(false);
+    const didAutoRestoreLocalProjectRef = useRef(false);
 
     // Multi-video playback: store video blobs and URLs indexed by libraryVideoId
     const videoBlobsRef = useRef<Map<string, Blob>>(new Map());
     const videoUrlsRef = useRef<Map<string, string>>(new Map());
+    const proxyUrlsRef = useRef<Map<string, SessionVideoProxy>>(new Map());
+    const proxyAbortRef = useRef<AbortController | null>(null);
     const activeClipIdRef = useRef<string | null>(null);
     const activeClipDataRef = useRef<VideoTrackClip | null>(null);
     const clipAudioStateRef = useRef<Map<string, boolean>>(new Map());
@@ -1010,12 +1166,34 @@ export default function Editor() {
     const lastTimeUpdateRef = useRef(0);
     const REACT_TIME_UPDATE_INTERVAL_MS = 33;
 
+    const getPlaybackVideoUrl = useCallback((libraryVideoId: string): string | undefined => {
+        if (!isExportingRef.current) {
+            const proxy = proxyUrlsRef.current.get(libraryVideoId);
+            if (proxy) return proxy.url;
+        }
+        return videoUrlsRef.current.get(libraryVideoId);
+    }, []);
+
     const setCurrentTimeThrottled = useCallback((time: number) => {
         const now = performance.now();
         if (now - lastTimeUpdateRef.current >= REACT_TIME_UPDATE_INTERVAL_MS) {
             lastTimeUpdateRef.current = now;
-            setCurrentTime(time);
+            startTransition(() => setCurrentTime(time));
         }
+    }, []);
+
+    useEffect(() => {
+        const disposeTemporaryProxies = () => {
+            proxyAbortRef.current?.abort();
+            proxyAbortRef.current = null;
+            for (const proxy of proxyUrlsRef.current.values()) disposeSessionVideoProxy(proxy);
+            proxyUrlsRef.current.clear();
+        };
+        window.addEventListener("pagehide", disposeTemporaryProxies, { capture: true });
+        return () => {
+            window.removeEventListener("pagehide", disposeTemporaryProxies, { capture: true });
+            disposeTemporaryProxies();
+        };
     }, []);
     useEffect(() => {
         muteOriginalAudioRef.current = muteOriginalAudio;
@@ -1072,9 +1250,20 @@ export default function Editor() {
         () => canvasElements.find(el => el.id === selectedElementId) ?? null,
         [canvasElements, selectedElementId]
     );
-    // Sync audio playback with video current time
+    const lastAudioSyncRef = useRef({ wallTime: 0, timelineTime: -1, playing: false });
+    // Sync audio playback with video current time. Audio elements advance on
+    // their own clock, so resynchronizing them every animation frame only adds
+    // main-thread work and audible micro-seeks. Correct drift at a measured
+    // cadence while still applying play/pause and large seeks immediately.
     const syncAudioPlayback = useCallback((videoTime: number, playing: boolean) => {
         if (isExportingRef.current) return;
+        const now = performance.now();
+        const previous = lastAudioSyncRef.current;
+        const isSmallContinuousStep = Math.abs(videoTime - previous.timelineTime) < 0.25;
+        if (playing === previous.playing && isSmallContinuousStep && now - previous.wallTime < 100) {
+            return;
+        }
+        lastAudioSyncRef.current = { wallTime: now, timelineTime: videoTime, playing };
         const currentElements = audioElementsRef.current;
 
         for (const track of audioTracks) {
@@ -1116,71 +1305,40 @@ export default function Editor() {
         };
     }, []);
 
+    const buildCurrentEditorState = useCallback((): EditorState => ({
+        backgroundTab, selectedWallpaper, backgroundBlur, padding, roundedCorners, shadows,
+        selectedImageUrl, selectedBackgroundVideoId, backgroundVideoTransform, backgroundColorConfig,
+        aspectRatio, customDimensions, cropArea, trimRange, videoClips, zoomFragments,
+        mockupId, mockupConfig, canvasElements, audioTracks, muteOriginalAudio, masterVolume,
+        cameraConfig, videoTransform, imageTransform, apply3DToBackground, imageMaskConfig, videoMaskConfig,
+        imagePhoneActive, imagePhoneX, imagePhoneY, imagePhoneScale, imagePhoneRotX, imagePhoneRotY,
+        imagePhoneRotZ, imagePhonePerspective, imagePhoneDevice, imagePhonePresetId, imagePhoneOpening,
+        imagePhoneShadow, imagePhoneShadowColor, imagePhoneRefWidth, imagePhoneAnimation,
+    }), [
+        backgroundTab, selectedWallpaper, backgroundBlur, padding, roundedCorners, shadows,
+        selectedImageUrl, selectedBackgroundVideoId, backgroundVideoTransform, backgroundColorConfig,
+        aspectRatio, customDimensions, cropArea, trimRange, videoClips, zoomFragments,
+        mockupId, mockupConfig, canvasElements, audioTracks, muteOriginalAudio, masterVolume,
+        cameraConfig, videoTransform, imageTransform, apply3DToBackground, imageMaskConfig, videoMaskConfig,
+        imagePhoneActive, imagePhoneX, imagePhoneY, imagePhoneScale, imagePhoneRotX, imagePhoneRotY,
+        imagePhoneRotZ, imagePhonePerspective, imagePhoneDevice, imagePhonePresetId, imagePhoneOpening,
+        imagePhoneShadow, imagePhoneShadowColor, imagePhoneRefWidth, imagePhoneAnimation,
+    ]);
+
     const updateEditorStateDebounced = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
         if (updateEditorStateDebounced.current) {
             clearTimeout(updateEditorStateDebounced.current);
         }
         updateEditorStateDebounced.current = setTimeout(() => {
-            setEditorState({
-                backgroundTab,
-                selectedWallpaper,
-                backgroundBlur,
-                padding,
-                roundedCorners,
-                shadows,
-                selectedImageUrl,
-                backgroundColorConfig,
-                aspectRatio,
-                customDimensions,
-                cropArea,
-                trimRange,
-                zoomFragments,
-                mockupId,
-                mockupConfig,
-                canvasElements,
-                audioTracks,
-                muteOriginalAudio,
-                masterVolume,
-                cameraConfig,
-                videoTransform,
-                imageTransform,
-                apply3DToBackground,
-                imageMaskConfig,
-                videoMaskConfig,
-                imagePhoneActive,
-                imagePhoneX,
-                imagePhoneY,
-                imagePhoneScale,
-                imagePhoneRotX,
-                imagePhoneRotY,
-                imagePhoneRotZ,
-                imagePhonePerspective,
-                imagePhoneDevice,
-                imagePhonePresetId,
-                imagePhoneOpening,
-                imagePhoneShadow,
-                imagePhoneShadowColor,
-                imagePhoneRefWidth
-            });
+            setEditorState(buildCurrentEditorState());
         }, 300);
         return () => {
             if (updateEditorStateDebounced.current) {
                 clearTimeout(updateEditorStateDebounced.current);
             }
         };
-    }, [
-        backgroundTab, selectedWallpaper, backgroundBlur, padding,
-        roundedCorners, shadows, selectedImageUrl, backgroundColorConfig,
-        aspectRatio, customDimensions, cropArea, trimRange,
-        zoomFragments, mockupId, mockupConfig, canvasElements,
-        audioTracks, muteOriginalAudio, masterVolume, cameraConfig,
-        videoTransform, imageTransform, apply3DToBackground, imageMaskConfig, videoMaskConfig,
-        imagePhoneActive, imagePhoneX, imagePhoneY, imagePhoneScale, imagePhoneRotX,
-        imagePhoneRotY, imagePhoneRotZ, imagePhonePerspective, imagePhoneDevice,
-        imagePhonePresetId, imagePhoneOpening, imagePhoneShadow, imagePhoneShadowColor, imagePhoneRefWidth,
-        setEditorState
-    ]);
+    }, [buildCurrentEditorState, setEditorState]);
 
     const prevUndoRedoVersionRef = useRef(undoRedoVersion);
     useEffect(() => {
@@ -1196,11 +1354,35 @@ export default function Editor() {
         setRoundedCorners(editorState.roundedCorners);
         setShadows(editorState.shadows);
         setSelectedImageUrl(editorState.selectedImageUrl);
+        setSelectedBackgroundVideoId(editorState.selectedBackgroundVideoId ?? "");
+        setBackgroundVideoTransform(editorState.backgroundVideoTransform ?? { ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM });
         setBackgroundColorConfig(editorState.backgroundColorConfig);
         setAspectRatio(editorState.aspectRatio);
         setCustomDimensions(editorState.customDimensions);
         setCropArea(editorState.cropArea);
         setTrimRange(editorState.trimRange);
+        const restoredClips = editorState.videoClips ?? [];
+        setVideoClips(restoredClips);
+        videoClipsRef.current = restoredClips;
+        setVideoDuration(calculateTotalDuration(restoredClips));
+        const restoredClip = getClipAtTime(restoredClips, currentTime) ?? [...restoredClips].sort((a, b) => a.startTime - b.startTime)[0];
+        if (restoredClip) {
+            activeClipIdRef.current = restoredClip.id;
+            activeClipDataRef.current = restoredClip;
+            const restoredUrl = getPlaybackVideoUrl(restoredClip.libraryVideoId);
+            if (restoredUrl && videoRef.current) {
+                setVideoUrl(restoredUrl);
+                setVideoId(restoredClip.libraryVideoId);
+                videoRef.current.src = restoredUrl;
+                videoRef.current.playbackRate = getClipPlaybackRate(restoredClip);
+                videoRef.current.currentTime = mapTimelineToClipTime(restoredClip, Math.max(restoredClip.startTime, currentTime));
+            }
+        } else {
+            activeClipIdRef.current = null;
+            activeClipDataRef.current = null;
+            setVideoUrl(null);
+            setVideoId(null);
+        }
         setZoomFragments(editorState.zoomFragments);
         setMockupId(editorState.mockupId);
         setMockupConfig(editorState.mockupConfig);
@@ -1209,7 +1391,7 @@ export default function Editor() {
         setMuteOriginalAudio(editorState.muteOriginalAudio);
         setMasterVolume(editorState.masterVolume);
         setCameraConfig(editorState.cameraConfig);
-        setVideoTransform(editorState.videoTransform);
+        setVideoTransform({ ...editorState.videoTransform, scale: editorState.videoTransform.scale ?? 1 });
         setImageTransform(editorState.imageTransform);
         setApply3DToBackground(editorState.apply3DToBackground);
         setImageMaskConfig(editorState.imageMaskConfig);
@@ -1228,11 +1410,188 @@ export default function Editor() {
         setImagePhoneShadow(editorState.imagePhoneShadow);
         setImagePhoneShadowColor(editorState.imagePhoneShadowColor);
         setImagePhoneRefWidth(editorState.imagePhoneRefWidth ?? 0);
+        setImagePhoneAnimation(editorState.imagePhoneAnimation ?? { ...DEFAULT_MOCKUP_ANIMATION });
 
         setTimeout(() => {
             isRestoringProjectRef.current = false;
         }, 500);
     }, [undoRedoVersion]);
+
+    const refreshLocalProjects = useCallback(async () => {
+        setLocalProjectsLoading(true);
+        try {
+            setLocalProjects(await listLocalVideoProjects());
+        } finally {
+            setLocalProjectsLoading(false);
+        }
+    }, []);
+
+    const loadLocalProject = useCallback(async (projectId: string) => {
+        const project = await getLocalVideoProject(projectId);
+        if (!project) {
+            alert("This local project could not be found.");
+            return;
+        }
+
+        setLocalProjectsLoading(true);
+        try {
+            const uniqueVideoIds = [...new Set((project.editorState.videoClips ?? []).map(clip => clip.libraryVideoId))];
+            const videos = await Promise.all(uniqueVideoIds.map(getLibraryVideo));
+            videos.forEach(video => {
+                if (!video) return;
+                videoBlobsRef.current.set(video.id, video.blob);
+                if (!videoUrlsRef.current.has(video.id)) videoUrlsRef.current.set(video.id, URL.createObjectURL(video.blob));
+                clipAudioStateRef.current.set(video.id, video.hasAudio !== false);
+            });
+
+            const restoredAudios = await hydrateUploadedAudios(project.audioAssetIds ?? []);
+            setUploadedAudios(previous => {
+                previous.forEach(audio => URL.revokeObjectURL(audio.url));
+                return restoredAudios;
+            });
+
+            const initialSnapshot = createInitialEditorState();
+            const snapshot = {
+                ...initialSnapshot,
+                ...project.editorState,
+                videoClips: project.editorState.videoClips ?? [],
+                videoTransform: { ...initialSnapshot.videoTransform, ...project.editorState.videoTransform, scale: project.editorState.videoTransform?.scale ?? 1 },
+            };
+            setCurrentTime(project.currentTime ?? 0);
+            setEditorState(snapshot, true);
+            clearHistory();
+            setUndoRedoVersion(version => version + 1);
+
+            const restoredClip = getClipAtTime(snapshot.videoClips, project.currentTime ?? 0) ?? snapshot.videoClips[0];
+            if (restoredClip) {
+                const libraryVideo = videos.find(video => video?.id === restoredClip.libraryVideoId);
+                const url = getPlaybackVideoUrl(restoredClip.libraryVideoId);
+                if (url) {
+                    setVideoUrl(url);
+                    setVideoId(restoredClip.libraryVideoId);
+                    if (libraryVideo) setVideoDimensions({ width: libraryVideo.width, height: libraryVideo.height });
+                }
+            }
+
+            setCurrentLocalVideoProjectId(project.id);
+            setCurrentLocalProjectId(project.id);
+            setCurrentLocalProjectName(project.name);
+            setLocalProjectsOpen(false);
+        } catch (error) {
+            console.error("Failed to load local project:", error);
+            alert("The project could not be loaded. One of its local media files may be missing.");
+        } finally {
+            setLocalProjectsLoading(false);
+        }
+    }, [clearHistory, setEditorState]);
+
+    const createLocalProjectThumbnail = useCallback(async (): Promise<string | undefined> => {
+        try {
+            await canvasRef.current?.drawFrame(true, currentTime);
+            const source = canvasRef.current?.getExportCanvas();
+            if (!source || source.width === 0 || source.height === 0) return undefined;
+            const width = 320;
+            const height = Math.max(1, Math.round(width * source.height / source.width));
+            const preview = document.createElement("canvas");
+            preview.width = width;
+            preview.height = height;
+            preview.getContext("2d")?.drawImage(source, 0, 0, width, height);
+            return preview.toDataURL("image/jpeg", 0.72);
+        } catch {
+            return undefined;
+        }
+    }, [currentTime]);
+
+    const saveLocalProject = useCallback(async () => {
+        if (!isVideoMode) return;
+        let name = currentLocalProjectName;
+        if (!currentLocalProjectId) {
+            const suggested = videoClips[0]?.name?.replace(/\.[^.]+$/, "") || "Untitled video";
+            name = window.prompt("Project name", suggested)?.trim() ?? "";
+            if (!name) return;
+        }
+
+        setLocalProjectSaving(true);
+        try {
+            const snapshot = buildCurrentEditorState();
+            const videoIds = [...new Set(snapshot.videoClips.map(clip => clip.libraryVideoId))];
+            const audioAssetIds = [...new Set(audioTracks.map(track => track.audioId))];
+            await Promise.all([persistLibraryVideos(videoIds), persistAudioAssets(audioAssetIds)]);
+
+            const existing = currentLocalProjectId ? await getLocalVideoProject(currentLocalProjectId) : null;
+            const now = Date.now();
+            const id = currentLocalProjectId ?? crypto.randomUUID();
+            const thumbnailDataUrl = await createLocalProjectThumbnail();
+            await putLocalVideoProject({
+                id,
+                name,
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now,
+                thumbnailDataUrl: thumbnailDataUrl ?? existing?.thumbnailDataUrl,
+                currentTime,
+                editorState: snapshot,
+                audioAssetIds,
+            });
+
+            setCurrentLocalVideoProjectId(id);
+            setCurrentLocalProjectId(id);
+            setCurrentLocalProjectName(name);
+            await refreshLocalProjects();
+        } catch (error) {
+            console.error("Failed to save local project:", error);
+            alert("The project could not be saved. Check that this browser has enough local storage space for the source media.");
+        } finally {
+            setLocalProjectSaving(false);
+        }
+    }, [isVideoMode, currentLocalProjectName, currentLocalProjectId, videoClips, buildCurrentEditorState, audioTracks, createLocalProjectThumbnail, currentTime, refreshLocalProjects]);
+
+    const handleDeleteLocalProject = useCallback(async (projectId: string) => {
+        const project = localProjects.find(item => item.id === projectId);
+        if (!window.confirm(`Delete “${project?.name ?? "this project"}”? The shared source media will stay in your local library.`)) return;
+        await deleteLocalVideoProject(projectId);
+        if (currentLocalProjectId === projectId) {
+            setCurrentLocalProjectId(null);
+            setCurrentLocalProjectName("");
+        }
+        await refreshLocalProjects();
+    }, [localProjects, currentLocalProjectId, refreshLocalProjects]);
+
+    const handleNewLocalProject = useCallback(() => {
+        setCurrentLocalVideoProjectId(null);
+        window.location.reload();
+    }, []);
+
+    useEffect(() => {
+        if (!isVideoMode || !currentLocalProjectId || !currentLocalProjectName || isRestoringProjectRef.current) return;
+        const timer = window.setTimeout(() => {
+            const autosave = async () => {
+                const existing = await getLocalVideoProject(currentLocalProjectId);
+                if (!existing) return;
+                const snapshot = buildCurrentEditorState();
+                const videoIds = [...new Set(snapshot.videoClips.map(clip => clip.libraryVideoId))];
+                const audioAssetIds = [...new Set(snapshot.audioTracks.map(track => track.audioId))];
+                await Promise.all([persistLibraryVideos(videoIds), persistAudioAssets(audioAssetIds)]);
+                await putLocalVideoProject({
+                    ...existing,
+                    name: currentLocalProjectName,
+                    updatedAt: Date.now(),
+                    currentTime,
+                    editorState: snapshot,
+                    audioAssetIds,
+                });
+            };
+            void autosave().catch(error => console.error("Local project autosave failed:", error));
+        }, 1500);
+        return () => window.clearTimeout(timer);
+    }, [isVideoMode, currentLocalProjectId, currentLocalProjectName, buildCurrentEditorState, currentTime]);
+
+    useEffect(() => {
+        if (!isVideoMode || didAutoRestoreLocalProjectRef.current) return;
+        didAutoRestoreLocalProjectRef.current = true;
+        void refreshLocalProjects();
+        const projectId = getCurrentLocalVideoProjectId();
+        if (projectId) void loadLocalProject(projectId);
+    }, [isVideoMode, loadLocalProject, refreshLocalProjects]);
 
     // Handler para cambiar el mockup
     const handleMockupChange = useCallback((newMockupId: string) => {
@@ -1364,6 +1723,14 @@ export default function Editor() {
                 fileSize: file.size,
                 mimeType: file.type,
             };
+
+            stageAudioAsset(file, {
+                id: newAudio.id,
+                name: newAudio.name,
+                duration: newAudio.duration,
+                fileSize: newAudio.fileSize,
+                mimeType: newAudio.mimeType,
+            });
 
             setUploadedAudios(prev => [...prev, newAudio]);
 
@@ -1501,7 +1868,7 @@ export default function Editor() {
 
     const thumbnailUrl = useMemo(() => {
         if (videoClips.length <= 1 || !thumbnailClipId) return videoUrl;
-        return videoUrlsRef.current.get(thumbnailClipId) || videoUrl;
+        return getPlaybackVideoUrl(thumbnailClipId) || videoUrl;
     }, [videoUrl, videoClips.length, thumbnailClipId]);
 
     const thumbnailVideoId = useMemo(() => {
@@ -1514,14 +1881,25 @@ export default function Editor() {
         const clip = videoClips.find(c => c.libraryVideoId === thumbnailClipId);
         return clip?.duration || videoDuration;
     }, [videoDuration, videoClips, thumbnailClipId]);
+    const thumbnailInterval = useMemo(
+        () => Math.max(0.25, thumbnailDuration / 240),
+        [thumbnailDuration],
+    );
 
-    const { getThumbnailForTime: getRawThumbnailForTime, thumbnails: currentThumbnails } = useVideoThumbnails(
+    const {
+        getThumbnailForTime: getRawThumbnailForTime,
+        thumbnails: currentThumbnails,
+        isGenerating: isPreviewCaching,
+        progress: previewCacheProgress,
+    } = useVideoThumbnails(
         thumbnailUrl,
         thumbnailDuration,
         {
-            interval: 0.1,
-            quality: "high",
+            interval: thumbnailInterval,
+            quality: "medium",
+            progressive: false,
             videoId: thumbnailVideoId || undefined,
+            suspend: isPlaying,
         }
     );
 
@@ -1558,7 +1936,7 @@ export default function Editor() {
         const clipAtTime = getClipAtTime(clips, timelineTime);
         if (!clipAtTime) return null;
 
-        const localTime = clipAtTime.trimStart + (timelineTime - clipAtTime.startTime);
+        const localTime = mapTimelineToClipTime(clipAtTime, timelineTime);
 
         // If this is the currently generating clip, use the hook directly (most up-to-date)
         if (clipAtTime.libraryVideoId === thumbnailVideoId) {
@@ -1582,8 +1960,7 @@ export default function Editor() {
 
     // Convert timeline time to clip-local time
     const timelineToClipTime = useCallback((timelineTime: number, clip: VideoTrackClip): number => {
-        const offsetInClip = timelineTime - clip.startTime;
-        return clip.trimStart + offsetInClip;
+        return mapTimelineToClipTime(clip, timelineTime);
     }, []);
 
     // Pre-load video blobs when clips change
@@ -1591,15 +1968,8 @@ export default function Editor() {
         const loadClipBlobs = async () => {
             const currentBlobs = videoBlobsRef.current;
             const currentUrls = videoUrlsRef.current;
-            const neededIds = new Set(videoClips.map(c => c.libraryVideoId));
-
-            for (const [id, url] of currentUrls.entries()) {
-                if (!neededIds.has(id)) {
-                    URL.revokeObjectURL(url);
-                    currentUrls.delete(id);
-                    currentBlobs.delete(id);
-                }
-            }
+            // Keep sources referenced by undo history warm. Revoking them here made
+            // Ctrl+Z restore a clip whose media URL had already been destroyed.
 
             for (const clip of videoClips) {
                 if (!currentBlobs.has(clip.libraryVideoId)) {
@@ -1626,7 +1996,117 @@ export default function Editor() {
     const { uploadVideo, loadUploadedVideo, isUploading } = useVideoUpload();
     const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
 
-    const handleExport = (quality: ExportQuality) => {
+    const switchActiveVideoSource = useCallback(async (
+        url: string,
+        sourceTime: number,
+        resumePlayback: boolean,
+    ) => {
+        const video = videoRef.current;
+        if (!video) return;
+        const playbackRate = video.playbackRate;
+        const muted = video.muted;
+        video.pause();
+        setVideoUrl(url);
+        if (video.src !== url) {
+            video.src = url;
+            video.load();
+            await waitForVideoReady(video);
+        }
+        const maxTime = Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.001) : sourceTime;
+        video.currentTime = Math.max(0, Math.min(sourceTime, maxTime));
+        video.playbackRate = playbackRate;
+        video.muted = muted;
+        if (resumePlayback) await video.play().catch(() => { });
+    }, []);
+
+    const handleCreateProxies = useCallback(async () => {
+        const uniqueVideoIds = [...new Set(videoClipsRef.current.map(clip => clip.libraryVideoId))];
+        if (uniqueVideoIds.length === 0) return;
+
+        proxyAbortRef.current?.abort();
+        const controller = new AbortController();
+        proxyAbortRef.current = controller;
+        setProxyStatus("generating");
+        setProxyProgress(0);
+
+        try {
+            for (let index = 0; index < uniqueVideoIds.length; index += 1) {
+                const libraryVideoId = uniqueVideoIds[index];
+                if (proxyUrlsRef.current.has(libraryVideoId)) {
+                    setProxyProgress(((index + 1) / uniqueVideoIds.length) * 100);
+                    continue;
+                }
+                let source = videoBlobsRef.current.get(libraryVideoId);
+                if (!source) {
+                    const libraryVideo = await getLibraryVideo(libraryVideoId);
+                    source = libraryVideo?.blob;
+                    if (source) videoBlobsRef.current.set(libraryVideoId, source);
+                }
+                if (!source) throw new Error(`The source media for ${libraryVideoId} is unavailable.`);
+
+                const proxy = await createSessionVideoProxy({
+                    libraryVideoId,
+                    source,
+                    signal: controller.signal,
+                    onProgress: progress => {
+                        setProxyProgress(((index + progress) / uniqueVideoIds.length) * 100);
+                    },
+                });
+                proxyUrlsRef.current.set(libraryVideoId, proxy);
+                setProxyCount(proxyUrlsRef.current.size);
+            }
+
+            const activeClip = activeClipDataRef.current ?? getClipAtTime(videoClipsRef.current, currentTime);
+            const proxy = activeClip ? proxyUrlsRef.current.get(activeClip.libraryVideoId) : undefined;
+            if (proxy && videoRef.current) {
+                await switchActiveVideoSource(proxy.url, videoRef.current.currentTime, isPlaying);
+            }
+            setProxyProgress(100);
+            setProxyCount(proxyUrlsRef.current.size);
+            setProxyStatus("ready");
+        } catch (error) {
+            if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+                setProxyStatus(proxyUrlsRef.current.size > 0 ? "ready" : "idle");
+            } else {
+                console.error("Proxy creation failed:", error);
+                setProxyStatus("error");
+            }
+        } finally {
+            if (proxyAbortRef.current === controller) proxyAbortRef.current = null;
+        }
+    }, [currentTime, isPlaying, switchActiveVideoSource]);
+
+    const handleRemoveProxies = useCallback(async () => {
+        proxyAbortRef.current?.abort();
+        proxyAbortRef.current = null;
+        const proxies = [...proxyUrlsRef.current.values()];
+        const activeClip = activeClipDataRef.current ?? getClipAtTime(videoClipsRef.current, currentTime);
+        const originalUrl = activeClip ? videoUrlsRef.current.get(activeClip.libraryVideoId) : undefined;
+        const sourceTime = videoRef.current?.currentTime ?? 0;
+        if (originalUrl) {
+            await switchActiveVideoSource(originalUrl, sourceTime, isPlaying).catch(error => {
+                console.warn("Could not restore the original preview source:", error);
+            });
+        }
+        proxyUrlsRef.current.clear();
+        proxies.forEach(disposeSessionVideoProxy);
+        setProxyCount(0);
+        setProxyProgress(0);
+        setProxyStatus("idle");
+    }, [currentTime, isPlaying, switchActiveVideoSource]);
+
+    const handleCancelProxyCreation = useCallback(() => {
+        proxyAbortRef.current?.abort();
+        proxyAbortRef.current = null;
+        const partialProxies = [...proxyUrlsRef.current.values()];
+        proxyUrlsRef.current.clear();
+        partialProxies.forEach(disposeSessionVideoProxy);
+        setProxyCount(0);
+        setProxyProgress(0);
+        setProxyStatus("idle");
+    }, []);
+
+    const handleExport = async (quality: ExportQuality) => {
         /* console.log("=== RECIPE JSON PARA BACKEND (PRUEBAS) ===");
          const userId = user?.id ?? "USER-ID-NO-DISPONIBLE";
          const appOrigin = window.location.origin;
@@ -1672,6 +2152,8 @@ export default function Editor() {
               backgroundBlur,
               // dataUrl si el usuario subió imagen propia | URL https si es Unsplash/Pexels | "" si no hay
               selectedImageUrl,
+              selectedBackgroundVideoId,
+              backgroundVideoTransform,
               backgroundColorConfig,
               aspectRatio,
               customDimensions,
@@ -1702,45 +2184,71 @@ export default function Editor() {
          console.log("==========================================");
          // ── FIN BACKEND TESTING ──*/
 
+        const exportClip = activeClipDataRef.current ?? getClipAtTime(videoClipsRef.current, currentTime);
+        const proxyToRestore = exportClip ? proxyUrlsRef.current.get(exportClip.libraryVideoId) : undefined;
+        const originalExportUrl = exportClip ? videoUrlsRef.current.get(exportClip.libraryVideoId) : undefined;
+        const sourceTimeBeforeExport = videoRef.current?.currentTime ?? 0;
+        const resumeAfterExport = isPlaying;
+
         isExportingRef.current = true;
         for (const audioEl of audioElementsRef.current.values()) {
             audioEl.pause();
         }
 
-        exportVideo({
-            quality,
-            videoBlob: videoBlob ?? undefined,
-            transparentBackground: selectedWallpaper === -1,
-            trim: trimRange.end > trimRange.start ? { start: trimRange.start, end: trimRange.end } : undefined,
-            muteOriginalAudio,
-            videoHasAudioTrack: videoHasAudioTrack,
-            audioTracks: audioTracks.map(track => {
-                const audio = uploadedAudios.find(a => a.id === track.audioId);
-                return {
-                    audioUrl: audio?.url || '',
-                    startTime: track.startTime,
-                    duration: track.duration,
-                    trimStart: track.trimStart ?? 0,
-                    volume: track.volume,
-                    loop: track.loop,
-                };
-            }),
-            masterVolume,
-            videoClips: videoClips.length > 0 ? videoClips : undefined,
-            videoClipBlobs: videoClips.length > 1 ? videoBlobsRef.current : undefined,
-            clipAudioStates: Object.fromEntries(clipAudioStateRef.current),
-        }).finally(() => {
+        try {
+            if (proxyToRestore && originalExportUrl) {
+                await switchActiveVideoSource(originalExportUrl, sourceTimeBeforeExport, false);
+            }
+            await exportVideo({
+                quality,
+                videoBlob: videoBlob ?? undefined,
+                transparentBackground: backgroundTab === "wallpaper" && selectedWallpaper === -1,
+                trim: trimRange.end > trimRange.start ? { start: trimRange.start, end: trimRange.end } : undefined,
+                muteOriginalAudio,
+                videoHasAudioTrack: videoHasAudioTrack,
+                audioTracks: audioTracks.map(track => {
+                    const audio = uploadedAudios.find(a => a.id === track.audioId);
+                    return {
+                        audioUrl: audio?.url || '',
+                        startTime: track.startTime,
+                        duration: track.duration,
+                        trimStart: track.trimStart ?? 0,
+                        volume: track.volume,
+                        loop: track.loop,
+                    };
+                }),
+                masterVolume,
+                videoClips: videoClips.length > 0 ? videoClips : undefined,
+                videoClipBlobs: videoClips.length > 1 ? videoBlobsRef.current : undefined,
+                clipAudioStates: Object.fromEntries(clipAudioStateRef.current),
+            });
+        } finally {
             isExportingRef.current = false;
-        });
+            if (proxyToRestore) {
+                await switchActiveVideoSource(proxyToRestore.url, sourceTimeBeforeExport, resumeAfterExport).catch(error => {
+                    console.warn("Could not restore the proxy preview after export:", error);
+                });
+                if (resumeAfterExport) syncAudioPlayback(currentTime, true);
+            }
+        }
     };
 
     const handleVideoUpload = useCallback(async (file: File) => {
         const hasExistingClips = videoClipsRef.current.length > 0;
 
-        // Add video to library first
-        let libraryVideo: Awaited<ReturnType<typeof addVideoToLibrary>> | null = null;
+        // Open the browser-provided File directly. This only reads metadata and
+        // creates an object URL; it does not copy or modify the original file.
+        const uploadedData = await uploadVideo(file);
+        if (!uploadedData) return;
+
+        let libraryVideo: Awaited<ReturnType<typeof addVideoToSessionLibrary>>;
         try {
-            libraryVideo = await addVideoToLibrary(file);
+            libraryVideo = await addVideoToSessionLibrary(file, {
+                duration: uploadedData.duration,
+                width: uploadedData.width,
+                height: uploadedData.height,
+                aspectRatio: uploadedData.aspectRatio,
+            });
             const count = await getLibraryVideoCount();
             setNewVideosCount(hasExistingClips ? count : 0);
             setVideosLibraryRefresh(prev => prev + 1);
@@ -1750,25 +2258,35 @@ export default function Editor() {
         }
 
         if (hasExistingClips) {
+            videoBlobsRef.current.set(libraryVideo.id, file);
+            videoUrlsRef.current.set(libraryVideo.id, uploadedData.url);
+            if (!proxyUrlsRef.current.has(libraryVideo.id)) setProxyStatus("idle");
             setActiveTool("video");
             return;
         }
 
         // First video - add to track
+        proxyAbortRef.current?.abort();
+        proxyAbortRef.current = null;
+        for (const proxy of proxyUrlsRef.current.values()) disposeSessionVideoProxy(proxy);
+        proxyUrlsRef.current.clear();
+        setProxyCount(0);
+        setProxyProgress(0);
+        setProxyStatus("idle");
         for (const [, url] of videoUrlsRef.current.entries()) {
             URL.revokeObjectURL(url);
         }
         videoBlobsRef.current.clear();
         videoUrlsRef.current.clear();
+        videoBlobsRef.current.set(libraryVideo.id, file);
+        videoUrlsRef.current.set(libraryVideo.id, uploadedData.url);
         activeClipIdRef.current = null;
         activeClipDataRef.current = null;
         setVideoBlob(file);
-        if (libraryVideo) {
-            const originalHasAudio = libraryVideo.originalHasAudio !== false;
-            setVideoHasAudioTrack(originalHasAudio);
-            if (!originalHasAudio) setMuteOriginalAudio(true);
-            clipAudioStateRef.current.set(libraryVideo.id, libraryVideo.hasAudio !== false);
-        }
+        const originalHasAudio = libraryVideo.originalHasAudio !== false;
+        setVideoHasAudioTrack(originalHasAudio);
+        if (!originalHasAudio) setMuteOriginalAudio(true);
+        clipAudioStateRef.current.set(libraryVideo.id, libraryVideo.hasAudio !== false);
 
         try {
             await clearAllThumbnailCache();
@@ -1776,8 +2294,7 @@ export default function Editor() {
             console.warn("Failed to clear thumbnails:", error);
         }
 
-        const uploadedData = await uploadVideo(file);
-        if (uploadedData && libraryVideo) {
+        if (uploadedData) {
             lastLoadedVideoIdRef.current = uploadedData.videoId;
 
             setVideoUrl(uploadedData.url);
@@ -1815,7 +2332,10 @@ export default function Editor() {
     // Handler to upload video to the library only (from VideosMenu)
     const handleVideoUploadToLibrary = useCallback(async (file: File) => {
         try {
-            await addVideoToLibrary(file);
+            const metadata = await getVideoMetadata(file);
+            const libraryVideo = await addVideoToSessionLibrary(file, metadata);
+            videoBlobsRef.current.set(libraryVideo.id, file);
+            videoUrlsRef.current.set(libraryVideo.id, URL.createObjectURL(file));
             const count = await getLibraryVideoCount();
             setNewVideosCount(count);
             setVideosLibraryRefresh(prev => prev + 1);
@@ -1839,6 +2359,7 @@ export default function Editor() {
             const blobUrl = URL.createObjectURL(blob);
             videoUrlsRef.current.set(videoId, blobUrl);
         }
+        if (!proxyUrlsRef.current.has(videoId)) setProxyStatus("idle");
 
         // Use functional update to always have the latest state
         setVideoClips(prevClips => {
@@ -1865,7 +2386,7 @@ export default function Editor() {
                 if (prevClips.length === 0) {
                     activeClipIdRef.current = newClip.id;
                     activeClipDataRef.current = newClip;
-                    const url = videoUrlsRef.current.get(videoId) || URL.createObjectURL(blob);
+                    const url = getPlaybackVideoUrl(videoId) || URL.createObjectURL(blob);
                     setVideoBlob(blob);
                     setVideoUrl(url);
                     setVideoId(videoId);
@@ -1908,22 +2429,35 @@ export default function Editor() {
     }, []);
 
     const handleUpdateVideoClip = useCallback((clipId: string, updates: Partial<VideoTrackClip>) => {
-        setVideoClips(prev => {
-            const newClips = prev.map(clip =>
-                clip.id === clipId ? { ...clip, ...updates } : clip
-            );
-            if (updates.startTime !== undefined || updates.trimEnd !== undefined || updates.trimStart !== undefined) {
-                const newDuration = calculateTotalDuration(newClips);
-                setVideoDuration(newDuration);
-                setTrimRange({ start: 0, end: newDuration });
-            }
-            return newClips;
-        });
-    }, []);
+        const previousClips = videoClipsRef.current;
+        const previousClip = previousClips.find(clip => clip.id === clipId);
+        if (!previousClip) return;
+
+        let newClips = previousClips.map(clip => clip.id === clipId ? { ...clip, ...updates } : clip);
+        if (updates.playbackRate !== undefined) {
+            const oldEnd = previousClip.startTime + getClipTimelineDuration(previousClip);
+            const updatedClip = newClips.find(clip => clip.id === clipId)!;
+            const newEnd = updatedClip.startTime + getClipTimelineDuration(updatedClip);
+            const rippleDelta = newEnd - oldEnd;
+            newClips = newClips.map(clip => clip.id !== clipId && clip.startTime >= oldEnd - 0.0001
+                ? { ...clip, startTime: Math.max(0, clip.startTime + rippleDelta) }
+                : clip);
+        }
+        newClips = [...newClips].sort((a, b) => a.startTime - b.startTime);
+        const newDuration = calculateTotalDuration(newClips);
+        const nextRange = { start: 0, end: newDuration };
+        videoClipsRef.current = newClips;
+        setVideoClips(newClips);
+        setVideoDuration(newDuration);
+        setTrimRange(nextRange);
+        recordVideoClipHistory(newClips, nextRange);
+    }, [recordVideoClipHistory]);
 
     const handleDeleteVideoClip = useCallback((clipId: string) => {
-        setVideoClips(prev => {
-            const newClips = prev.filter(clip => clip.id !== clipId);
+        const previousClips = videoClipsRef.current;
+        const newClips = previousClips.filter(clip => clip.id !== clipId);
+        videoClipsRef.current = newClips;
+        setVideoClips(newClips);
             if (newClips.length > 0) {
                 const newDuration = calculateTotalDuration(newClips);
                 setVideoDuration(newDuration);
@@ -1933,7 +2467,7 @@ export default function Editor() {
                     const firstClip = [...newClips].sort((a, b) => a.startTime - b.startTime)[0];
                     activeClipIdRef.current = firstClip.id;
                     activeClipDataRef.current = firstClip;
-                    const url = videoUrlsRef.current.get(firstClip.libraryVideoId);
+                    const url = getPlaybackVideoUrl(firstClip.libraryVideoId);
                     if (url && videoRef.current) {
                         videoRef.current.src = url;
                         videoRef.current.currentTime = firstClip.trimStart;
@@ -1955,12 +2489,11 @@ export default function Editor() {
                     videoRef.current.removeAttribute('src');
                 }
             }
-            return newClips;
-        });
+        recordVideoClipHistory(newClips, { start: 0, end: calculateTotalDuration(newClips) });
         if (selectedVideoClipId === clipId) {
             setSelectedVideoClipId(null);
         }
-    }, [selectedVideoClipId]);
+    }, [selectedVideoClipId, recordVideoClipHistory]);
 
     const handleSplitVideoClip = useCallback(() => {
         const clips = videoClipsRef.current;
@@ -1972,11 +2505,12 @@ export default function Editor() {
 
         const { updatedClip, newClip } = result;
 
-        setVideoClips(prev => {
-            const next = prev.map(c => (c.id === updatedClip.id ? updatedClip : c));
-            next.push(newClip);
-            return next.sort((a, b) => a.startTime - b.startTime);
-        });
+        const next = clips.map(c => (c.id === updatedClip.id ? updatedClip : c));
+        next.push(newClip);
+        next.sort((a, b) => a.startTime - b.startTime);
+        videoClipsRef.current = next;
+        setVideoClips(next);
+        recordVideoClipHistory(next, { start: 0, end: calculateTotalDuration(next) });
 
         if (activeClipIdRef.current === updatedClip.id) {
             activeClipIdRef.current = newClip.id;
@@ -1988,7 +2522,7 @@ export default function Editor() {
         setSelectedAudioTrackId(null);
         setSelectedElementId(null);
         setActiveTool("video");
-    }, [currentTime]);
+    }, [currentTime, recordVideoClipHistory]);
 
     const activeClipForSplit = getClipAtTime(videoClipsRef.current, currentTime);
     const canSplitClip = !!activeClipForSplit && splitClipAtTime(activeClipForSplit, currentTime) !== null;
@@ -2007,7 +2541,7 @@ export default function Editor() {
                     const firstClip = [...newClips].sort((a, b) => a.startTime - b.startTime)[0];
                     activeClipIdRef.current = firstClip.id;
                     activeClipDataRef.current = firstClip;
-                    const url = videoUrlsRef.current.get(firstClip.libraryVideoId);
+                    const url = getPlaybackVideoUrl(firstClip.libraryVideoId);
                     if (url && videoRef.current) {
                         videoRef.current.src = url;
                         videoRef.current.currentTime = firstClip.trimStart;
@@ -2043,6 +2577,14 @@ export default function Editor() {
             const url = videoUrlsRef.current.get(libraryVideoId);
             if (url) URL.revokeObjectURL(url);
             videoUrlsRef.current.delete(libraryVideoId);
+        }
+        const proxy = proxyUrlsRef.current.get(libraryVideoId);
+        if (proxy) {
+            disposeSessionVideoProxy(proxy);
+            proxyUrlsRef.current.delete(libraryVideoId);
+            const remaining = proxyUrlsRef.current.size;
+            setProxyCount(remaining);
+            setProxyStatus(remaining > 0 ? "ready" : "idle");
         }
     }, []);
 
@@ -2190,7 +2732,16 @@ export default function Editor() {
                             try {
                                 let libraryVideo = await findExistingVideo(fileName, videoBlob.size);
 
-                                if (!libraryVideo) {
+                                if (!libraryVideo && videoBlob instanceof File) {
+                                    libraryVideo = await addVideoToSessionLibrary(videoBlob, {
+                                        duration: videoToLoad.duration,
+                                        width,
+                                        height,
+                                        aspectRatio: 'aspectRatio' in videoToLoad
+                                            ? (videoToLoad.aspectRatio as string)
+                                            : "auto",
+                                    });
+                                } else if (!libraryVideo) {
                                     libraryVideo = await addVideoToLibraryWithMetadata({
                                         blob: videoBlob,
                                         fileName,
@@ -2280,6 +2831,35 @@ export default function Editor() {
     }, []);
 
     useEffect(() => {
+        let cancelled = false;
+        const objectUrls = backgroundVideoUrlsRef.current;
+
+        bgVideosGetAll()
+            .then(entries => {
+                if (cancelled) return;
+                const videos = entries.map(entry => {
+                    const url = URL.createObjectURL(entry.blob);
+                    objectUrls.set(entry.id, url);
+                    return {
+                        id: entry.id,
+                        url,
+                        name: entry.name,
+                        duration: entry.duration,
+                        type: entry.type,
+                    };
+                });
+                setUploadedBackgroundVideos(videos);
+            })
+            .catch(err => console.error("Error loading background videos:", err));
+
+        return () => {
+            cancelled = true;
+            objectUrls.forEach(url => URL.revokeObjectURL(url));
+            objectUrls.clear();
+        };
+    }, []);
+
+    useEffect(() => {
         if (videoRef.current) {
             videoRef.current.muted = muteOriginalAudio;
         }
@@ -2289,21 +2869,22 @@ export default function Editor() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
+            const key = e.key.toLowerCase();
             const isInputFocused = target.tagName === 'INPUT' ||
                 target.tagName === 'TEXTAREA' ||
                 target.isContentEditable;
 
             if (isInputFocused) return;
 
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 if (canUndo) {
                     handleUndo();
                 }
             }
 
-            if (((e.ctrlKey || e.metaKey) && e.key === 'y') ||
-                ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')) {
+            if (((e.ctrlKey || e.metaKey) && key === 'y') ||
+                ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'z')) {
                 e.preventDefault();
                 if (canRedo) {
                     handleRedo();
@@ -2346,7 +2927,7 @@ export default function Editor() {
                 const clips = videoClipsRef.current;
                 if (clips.length > 0 && activeClipDataRef.current) {
                     const activeClip = activeClipDataRef.current;
-                    const offsetInClip = videoRef.current.currentTime - activeClip.trimStart;
+                    const offsetInClip = (videoRef.current.currentTime - activeClip.trimStart) / getClipPlaybackRate(activeClip);
                     const timelineTime = activeClip.startTime + offsetInClip;
                     setCurrentTime(timelineTime);
                     syncAudioPlayback(timelineTime, false);
@@ -2368,7 +2949,7 @@ export default function Editor() {
                     const clipAtTime = findActiveClipAtTime(startTime);
                     if (clipAtTime) {
                         if (clipAtTime.id !== activeClipIdRef.current) {
-                            const url = videoUrlsRef.current.get(clipAtTime.libraryVideoId);
+                            const url = getPlaybackVideoUrl(clipAtTime.libraryVideoId);
                             if (url && videoRef.current) {
                                 activeClipIdRef.current = clipAtTime.id;
                                 activeClipDataRef.current = clipAtTime;
@@ -2377,7 +2958,7 @@ export default function Editor() {
                                 const clipTime = timelineToClipTime(startTime, clipAtTime);
                                 const onCanPlay = () => {
                                     if (videoRef.current) {
-                                        videoRef.current.playbackRate = 1.0;
+                                        videoRef.current.playbackRate = getClipPlaybackRate(clipAtTime);
                                         videoRef.current.currentTime = clipTime;
                                         const clipHasAudio = clipAudioStateRef.current.get(clipAtTime.libraryVideoId);
                                         videoRef.current.muted = muteOriginalAudioRef.current || clipHasAudio === false;
@@ -2394,6 +2975,7 @@ export default function Editor() {
                             activeClipIdRef.current = clipAtTime.id;
                             activeClipDataRef.current = clipAtTime;
                             const clipTime = timelineToClipTime(startTime, clipAtTime);
+                            videoRef.current.playbackRate = getClipPlaybackRate(clipAtTime);
                             videoRef.current.currentTime = clipTime;
                         }
                     } else if (clips.length === 1) {
@@ -2423,12 +3005,41 @@ export default function Editor() {
 
     const updateTimeSmoothRef = useRef<() => void>(() => { });
 
+    cancelPlaybackFrameRef.current = () => {
+        if (animationFrameRef.current !== null) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+        }
+        const pendingVideoFrame = videoFrameCallbackRef.current;
+        if (pendingVideoFrame) {
+            pendingVideoFrame.video.cancelVideoFrameCallback(pendingVideoFrame.id);
+            videoFrameCallbackRef.current = null;
+        }
+    };
+
+    schedulePlaybackFrameRef.current = () => {
+        if (animationFrameRef.current !== null || videoFrameCallbackRef.current !== null) return;
+        const video = videoRef.current;
+        if (video && !video.paused && "requestVideoFrameCallback" in video) {
+            const id = video.requestVideoFrameCallback(() => {
+                videoFrameCallbackRef.current = null;
+                updateTimeSmoothRef.current();
+            });
+            videoFrameCallbackRef.current = { video, id };
+            return;
+        }
+        animationFrameRef.current = requestAnimationFrame(() => {
+            animationFrameRef.current = null;
+            updateTimeSmoothRef.current();
+        });
+    };
+
     useEffect(() => {
         updateTimeSmoothRef.current = () => {
             if (justEndedRef.current) return;
             if (isSwitchingClipRef.current) {
                 if (isPlaying && !isDraggingPlayhead) {
-                    animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                    schedulePlaybackFrameRef.current();
                 }
                 return;
             }
@@ -2457,7 +3068,7 @@ export default function Editor() {
 
                     if (!activeClip) {
                         if (isPlaying && !isDraggingPlayhead) {
-                            animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                            schedulePlaybackFrameRef.current();
                         }
                         return;
                     }
@@ -2470,15 +3081,15 @@ export default function Editor() {
                     if (clipSwitchTimeRef.current !== null) {
                         setCurrentTime(clipSwitchTimeRef.current);
                         if (isPlaying && !isDraggingPlayhead) {
-                            animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                            schedulePlaybackFrameRef.current();
                         }
                         return;
                     }
 
                     if (activeClip) {
-                        const offsetInClip = currentVideoTime - activeClip.trimStart;
+                        const offsetInClip = (currentVideoTime - activeClip.trimStart) / getClipPlaybackRate(activeClip);
                         const timelineTime = activeClip.startTime + offsetInClip;
-                        const clipDuration = activeClip.trimEnd - activeClip.trimStart;
+                        const clipDuration = getClipTimelineDuration(activeClip);
                         const clipEndOnTimeline = activeClip.startTime + clipDuration;
 
                         const reachedEndByTime = currentVideoTime >= activeClip.trimEnd;
@@ -2490,7 +3101,7 @@ export default function Editor() {
                             const nextClip = sortedClips[currentIndex + 1];
 
                             if (nextClip) {
-                                const nextUrl = videoUrlsRef.current.get(nextClip.libraryVideoId);
+                                const nextUrl = getPlaybackVideoUrl(nextClip.libraryVideoId);
                                 const nextBlob = videoBlobsRef.current.get(nextClip.libraryVideoId);
 
                                 if (nextUrl && videoRef.current) {
@@ -2509,14 +3120,14 @@ export default function Editor() {
                                         clipSwitchTimeRef.current = null;
                                         isSwitchingClipRef.current = false;
                                         justEndedRef.current = false;
-                                        currentVideo.playbackRate = 1.0;
+                                        currentVideo.playbackRate = getClipPlaybackRate(nextClipSnapshot);
                                         const nextClipHasAudio = clipAudioStateRef.current.get(nextClipSnapshot.libraryVideoId);
                                         currentVideo.muted = muteOriginalAudioRef.current || nextClipHasAudio === false;
                                         currentVideo.play().catch(e => {
                                             if (e.name !== 'AbortError') console.warn('Play interrupted:', e);
                                         });
                                         setIsPlaying(true);
-                                        animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                                        schedulePlaybackFrameRef.current();
                                     };
 
                                     const onCanPlay = () => {
@@ -2539,7 +3150,7 @@ export default function Editor() {
                                     currentVideo.addEventListener('canplay', onCanPlay);
 
                                     setCurrentTime(nextClipSnapshot.startTime);
-                                    animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                                    schedulePlaybackFrameRef.current();
                                     return;
                                 }
                             } else {
@@ -2584,7 +3195,7 @@ export default function Editor() {
                 }
             }
             if (isPlaying && !isDraggingPlayhead) {
-                animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                schedulePlaybackFrameRef.current();
             }
         };
     }, [isPlaying, isDraggingPlayhead, trimRange.end, syncAudioPlayback]);
@@ -2592,18 +3203,13 @@ export default function Editor() {
     // Start/stop animation frame loop based on playing state
     useEffect(() => {
         if (isPlaying && !isDraggingPlayhead) {
-            animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+            schedulePlaybackFrameRef.current();
         } else {
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-                animationFrameRef.current = null;
-            }
+            cancelPlaybackFrameRef.current();
         }
 
         return () => {
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
+            cancelPlaybackFrameRef.current();
         };
     }, [isPlaying, isDraggingPlayhead]);
 
@@ -2651,7 +3257,7 @@ export default function Editor() {
                     const clipTime = timelineToClipTime(finalTime, clipAtTime);
 
                     if (clipAtTime.id !== activeClipIdRef.current) {
-                        const url = videoUrlsRef.current.get(clipAtTime.libraryVideoId);
+                        const url = getPlaybackVideoUrl(clipAtTime.libraryVideoId);
                         const isSameSource = !!url && videoRef.current.src === url;
                         activeClipIdRef.current = clipAtTime.id;
                         activeClipDataRef.current = clipAtTime;
@@ -2666,7 +3272,7 @@ export default function Editor() {
                             const shouldPlay = wasPlayingBeforeDragRef.current;
                             const onCanPlay = () => {
                                 if (currentVideo) {
-                                    currentVideo.playbackRate = 1.0;
+                                    currentVideo.playbackRate = getClipPlaybackRate(clipAtTime);
                                     currentVideo.currentTime = clipTime;
                                     const clipHasAudio = clipAudioStateRef.current.get(clipAtTime.libraryVideoId);
                                     currentVideo.muted = muteOriginalAudioRef.current || clipHasAudio === false;
@@ -2687,6 +3293,7 @@ export default function Editor() {
                             return;
                         }
                     } else {
+                        videoRef.current.playbackRate = getClipPlaybackRate(clipAtTime);
                         videoRef.current.currentTime = clipTime;
                     }
                 }
@@ -2717,7 +3324,7 @@ export default function Editor() {
 
     const handleLoadedMetadata = useCallback(() => {
         if (videoRef.current) {
-            videoRef.current.playbackRate = 1.0;
+            videoRef.current.playbackRate = getClipPlaybackRate(activeClipDataRef.current ?? { playbackRate: 1 });
 
             if (isExportingRef.current) return;
 
@@ -2725,7 +3332,11 @@ export default function Editor() {
             const currentClips = videoClipsRef.current;
             const isMultiClip = currentClips.length > 1;
 
-            if (isFinite(duration) && duration > 0 && !isMultiClip) {
+            if (currentClips.length > 0) {
+                const timelineDuration = calculateTotalDuration(currentClips);
+                setVideoDuration(timelineDuration);
+                setTrimRange(prev => prev.end === 0 ? { start: 0, end: timelineDuration } : prev);
+            } else if (isFinite(duration) && duration > 0 && !isMultiClip) {
                 setVideoDuration(duration);
                 setTrimRange(prev => prev.end === 0 ? { start: 0, end: duration } : prev);
             }
@@ -2767,7 +3378,10 @@ export default function Editor() {
         setScrubTime(time);
         setCurrentTime(time);
 
-        if (videoRef.current && !isDraggingPlayhead) {
+        const now = performance.now();
+        const shouldUpdateMedia = !isDraggingPlayhead || now - lastScrubMediaSeekRef.current >= 66;
+        if (videoRef.current && shouldUpdateMedia) {
+            if (isDraggingPlayhead) lastScrubMediaSeekRef.current = now;
             const clips = videoClipsRef.current;
 
             if (clips.length > 0) {
@@ -2776,7 +3390,7 @@ export default function Editor() {
                 if (clipAtTime) {
                     const clipTime = timelineToClipTime(time, clipAtTime);
                     const currentUrl = videoRef.current.src;
-                    const targetUrl = videoUrlsRef.current.get(clipAtTime.libraryVideoId);
+                    const targetUrl = getPlaybackVideoUrl(clipAtTime.libraryVideoId);
                     const isDifferentSource = !!targetUrl && currentUrl !== targetUrl;
 
                     if (clipAtTime.id !== activeClipIdRef.current) {
@@ -2785,15 +3399,12 @@ export default function Editor() {
                     }
 
                     if (isDifferentSource && targetUrl) {
-                        const wasPlaying = isPlaying;
+                        const wasPlaying = isPlaying && !isDraggingPlayhead;
 
                         if (videoRef.current && !videoRef.current.paused) {
                             videoRef.current.pause();
                         }
-                        if (animationFrameRef.current) {
-                            cancelAnimationFrame(animationFrameRef.current);
-                            animationFrameRef.current = null;
-                        }
+                        cancelPlaybackFrameRef.current();
 
                         activeClipIdRef.current = clipAtTime.id;
                         activeClipDataRef.current = clipAtTime;
@@ -2805,7 +3416,7 @@ export default function Editor() {
 
                         const onCanPlay = () => {
                             if (currentVideo) {
-                                currentVideo.playbackRate = 1.0;
+                                currentVideo.playbackRate = getClipPlaybackRate(clipAtTime);
                                 currentVideo.currentTime = clipTime;
                                 const clipHasAudio = clipAudioStateRef.current.get(clipAtTime.libraryVideoId);
                                 currentVideo.muted = muteOriginalAudioRef.current || clipHasAudio === false;
@@ -2817,7 +3428,7 @@ export default function Editor() {
                                     currentVideo.play().catch(e => {
                                         if (e.name !== 'AbortError') console.warn('Play interrupted:', e);
                                     });
-                                    animationFrameRef.current = requestAnimationFrame(updateTimeSmoothRef.current);
+                                    schedulePlaybackFrameRef.current();
                                 }
                             }
                             currentVideo?.removeEventListener('canplay', onCanPlay);
@@ -2826,6 +3437,7 @@ export default function Editor() {
                         syncAudioPlayback(time, false);
                         return;
                     } else {
+                        videoRef.current.playbackRate = getClipPlaybackRate(clipAtTime);
                         if ('fastSeek' in videoRef.current && typeof videoRef.current.fastSeek === 'function') {
                             videoRef.current.fastSeek(clipTime);
                         } else {
@@ -2840,7 +3452,7 @@ export default function Editor() {
                     videoRef.current.currentTime = time;
                 }
             }
-            syncAudioPlayback(time, isPlaying);
+            syncAudioPlayback(time, isPlaying && !isDraggingPlayhead);
         }
     }, [isDraggingPlayhead, isPlaying, syncAudioPlayback, findActiveClipAtTime, timelineToClipTime]);
 
@@ -2883,6 +3495,45 @@ export default function Editor() {
         setUploadedImages(prev => prev.filter(img => img !== url));
         if (selectedImageUrl === url) setSelectedImageUrl("");
     };
+
+    const handleBackgroundVideoUpload = useCallback(async (file: File) => {
+        if (!file.type.startsWith("video/")) return;
+
+        try {
+            const duration = await readVideoDuration(file);
+            const id = crypto.randomUUID();
+            await bgVideosSave({
+                id,
+                blob: file,
+                name: file.name,
+                type: file.type,
+                duration,
+                uploadedAt: Date.now(),
+            });
+
+            const url = URL.createObjectURL(file);
+            backgroundVideoUrlsRef.current.set(id, url);
+            setUploadedBackgroundVideos(previous => [{ id, url, name: file.name, duration, type: file.type }, ...previous]);
+            setSelectedBackgroundVideoId(id);
+            setBackgroundTab("video");
+        } catch (error) {
+            console.error("Error saving background video:", error);
+        }
+    }, []);
+
+    const handleBackgroundVideoSelect = useCallback((id: string) => {
+        setSelectedBackgroundVideoId(id);
+        setBackgroundTab("video");
+    }, []);
+
+    const handleBackgroundVideoRemove = useCallback((id: string) => {
+        bgVideosDelete(id).catch(err => console.error("Error deleting background video:", err));
+        const url = backgroundVideoUrlsRef.current.get(id);
+        if (url) URL.revokeObjectURL(url);
+        backgroundVideoUrlsRef.current.delete(id);
+        setUploadedBackgroundVideos(previous => previous.filter(video => video.id !== id));
+        setSelectedBackgroundVideoId(current => current === id ? "" : current);
+    }, []);
 
     // Background tab change handler
     const handleBackgroundTabChange = (tab: BackgroundTab) => {
@@ -3115,7 +3766,7 @@ export default function Editor() {
         <EditorTopBar
             onExport={handleExport}
             exportProgress={exportProgress}
-            hasTransparentBackground={selectedWallpaper === -1}
+            hasTransparentBackground={backgroundTab === "wallpaper" && selectedWallpaper === -1}
             onUndo={handleUndo}
             onRedo={handleRedo}
             canUndo={canUndo}
@@ -3125,11 +3776,16 @@ export default function Editor() {
             imageExportProgress={imageExportProgress}
             canvasWidth={customAspectRatio?.width || 1920}
             canvasHeight={customAspectRatio?.height || 1080}
+            onSaveProject={saveLocalProject}
+            onOpenProjects={() => { setLocalProjectsOpen(true); void refreshLocalProjects(); }}
+            projectName={currentLocalProjectName}
+            isSavingProject={localProjectSaving}
         />
     ), [
-        handleExport, exportProgress, selectedWallpaper, handleUndo, handleRedo,
+        handleExport, exportProgress, backgroundTab, selectedWallpaper, handleUndo, handleRedo,
         canUndo, canRedo, editorMode, handleImageExport, imageExportProgress,
-        customAspectRatio?.width, customAspectRatio?.height,
+        customAspectRatio?.width, customAspectRatio?.height, saveLocalProject, refreshLocalProjects,
+        currentLocalProjectName, localProjectSaving,
     ]);
 
     // Only show camera if the active clip has camera support
@@ -3187,12 +3843,21 @@ export default function Editor() {
                                         roundedCorners={roundedCorners}
                                         onRoundedCornersChange={handleRoundedCornersChange}
                                         shadows={shadows}
+                                        aspectRatio={aspectRatio}
+                                        onAspectRatioChange={handleAspectRatioChange}
                                         onShadowsChange={setShadows}
                                         uploadedImages={uploadedImages}
                                         selectedImageUrl={selectedImageUrl}
+                                        uploadedBackgroundVideos={uploadedBackgroundVideos}
+                                        selectedBackgroundVideoId={selectedBackgroundVideoId}
+                                        backgroundVideoTransform={backgroundVideoTransform}
                                         onImageUpload={handleImageUpload}
                                         onImageSelect={handleImageSelect}
                                         onImageRemove={handleImageRemove}
+                                        onBackgroundVideoUpload={handleBackgroundVideoUpload}
+                                        onBackgroundVideoSelect={handleBackgroundVideoSelect}
+                                        onBackgroundVideoRemove={handleBackgroundVideoRemove}
+                                        onBackgroundVideoTransformReset={() => setBackgroundVideoTransform({ ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM })}
                                         backgroundColorConfig={backgroundColorConfig}
                                         backgroundColorCss={backgroundColorCss}
                                         onBackgroundColorChange={handleBackgroundColorChange}
@@ -3289,6 +3954,7 @@ export default function Editor() {
                     <VideoCanvas
                         activeTool={activeTool}
                         isPlaying={isPlaying}
+                        previewQuality={previewQuality}
                         onMockupClick={handleMockupClick}
                         isRestoringProjectRef={isRestoringProjectRef}
                         layersPanelToolbar={layersPanelToolbar}
@@ -3313,6 +3979,9 @@ export default function Editor() {
                         selectedWallpaper={selectedWallpaper}
                         backgroundBlur={backgroundBlur}
                         selectedImageUrl={selectedImageUrl}
+                        selectedBackgroundVideoUrl={selectedBackgroundVideoUrl}
+                        backgroundVideoTransform={backgroundVideoTransform}
+                        onBackgroundVideoTransformChange={setBackgroundVideoTransform}
                         unsplashOverrideUrl={unsplashBgUrl}
                         backgroundColorCss={backgroundColorCss}
                         onTimeUpdate={handleTimeUpdate}
@@ -3369,6 +4038,17 @@ export default function Editor() {
                                 videoPreviewImageUrl={getThumbnailForTime(currentDisplayTime)?.dataUrl ?? null}
                                 onSplitClip={handleSplitVideoClip}
                                 canSplitClip={canSplitClip}
+                                previewQuality={previewQuality}
+                                onPreviewQualityChange={handlePreviewQualityChange}
+                                isPreviewCaching={isPreviewCaching}
+                                previewCacheProgress={previewCacheProgress}
+                                proxyStatus={proxyStatus}
+                                proxyProgress={proxyProgress}
+                                proxyCount={proxyCount}
+                                canCreateProxies={videoClips.length > 0}
+                                onCreateProxies={handleCreateProxies}
+                                onRemoveProxies={handleRemoveProxies}
+                                onCancelProxyCreation={handleCancelProxyCreation}
                             />
 
                             <Suspense fallback={<TimelineSkeleton />}>
@@ -3399,6 +4079,14 @@ export default function Editor() {
                                     selectedAudioTrackId={selectedAudioTrackId}
                                     onSelectAudioTrack={handleSelectAudioTrack}
                                     onUpdateAudioTrack={handleUpdateAudioTrack}
+                                    mockupActive={imagePhoneActive}
+                                    mockupAnimation={imagePhoneAnimation}
+                                    onUpdateMockupAnimation={(updates) => setImagePhoneAnimation(previous => ({ ...previous, ...updates }))}
+                                    onActivateMockupTool={() => handleMockupClick("3d")}
+                                    canvasElements={canvasElements}
+                                    selectedCanvasElementId={selectedElementId}
+                                    onSelectCanvasElement={(elementId) => selectCanvasElement(elementId)}
+                                    onUpdateCanvasElement={updateCanvasElement}
                                 />
                             </Suspense>
                         </>
@@ -3457,9 +4145,16 @@ export default function Editor() {
                 onShadowsChange={setShadows}
                 uploadedImages={uploadedImages}
                 selectedImageUrl={selectedImageUrl}
+                uploadedBackgroundVideos={uploadedBackgroundVideos}
+                selectedBackgroundVideoId={selectedBackgroundVideoId}
+                backgroundVideoTransform={backgroundVideoTransform}
                 onImageUpload={handleImageUpload}
                 onImageSelect={handleImageSelect}
                 onImageRemove={handleImageRemove}
+                onBackgroundVideoUpload={handleBackgroundVideoUpload}
+                onBackgroundVideoSelect={handleBackgroundVideoSelect}
+                onBackgroundVideoRemove={handleBackgroundVideoRemove}
+                onBackgroundVideoTransformReset={() => setBackgroundVideoTransform({ ...DEFAULT_BACKGROUND_VIDEO_TRANSFORM })}
                 backgroundColorConfig={backgroundColorConfig}
                 onBackgroundColorChange={handleBackgroundColorChange}
                 zoomFragments={zoomFragments}
@@ -3503,7 +4198,7 @@ export default function Editor() {
                 <ExportOverlay
                     exportProgress={exportProgress}
                     onCancel={cancelExport}
-                    isTransparentExport={selectedWallpaper === -1}
+                    isTransparentExport={backgroundTab === "wallpaper" && selectedWallpaper === -1}
                 />
             </Suspense>
             <Suspense fallback={null}>
@@ -3570,6 +4265,16 @@ export default function Editor() {
                     }}
                 />
             )}
+            <LocalProjectsDialog
+                open={localProjectsOpen}
+                projects={localProjects}
+                activeProjectId={currentLocalProjectId}
+                loading={localProjectsLoading}
+                onClose={() => setLocalProjectsOpen(false)}
+                onLoad={projectId => { void loadLocalProject(projectId); }}
+                onDelete={projectId => { void handleDeleteLocalProject(projectId); }}
+                onNew={handleNewLocalProject}
+            />
         </div>
     );
 }

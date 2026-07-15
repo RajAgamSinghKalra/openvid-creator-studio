@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, startTransition, useCallback, useLayoutEff
 import { useTranslations } from "next-intl";
 import { SliderControl } from "../../../../components/ui/SliderControl";
 import { SVG_CATEGORIES, IMAGE_CATEGORIES, PINNED_SVG_ITEMS, PINNED_IMAGE_ITEMS, getImagePreviewPath } from "@/lib/canvas-elements.config";
-import { SvgElement, TextElement, ImageElement, ElementsMenuProps, PRESET_COLORS, TEXT_PRESETS, FONT_FAMILIES, FONT_WEIGHTS, UploadedImage, ACCEPTED_FORMATS, MAX_FILE_SIZE } from "@/types/canvas-elements.types";
+import { SvgElement, TextElement, ImageElement, ElementsMenuProps, PRESET_COLORS, TEXT_PRESETS, TEXT_TEMPLATES, FONT_FAMILIES, FONT_WEIGHTS, UploadedImage, ACCEPTED_FORMATS, MAX_FILE_SIZE, type TextAnimationType, type TextTemplate } from "@/types/canvas-elements.types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { SVG_COMPONENTS } from "@/components/canvas-svg";
 import { TooltipAction } from "@/components/ui/tooltip-action";
 import { ProgressiveImg } from "@/components/ui/ProgressiveImg";
 import { canvasUploadsClear, canvasUploadsDelete, canvasUploadsGetAll, canvasUploadsSave } from "@/lib/canvas-uploads-idb";
+import { getTextFontFamilyCss } from "@/lib/text-rendering";
 
 interface ExtendedElementsMenuProps extends ElementsMenuProps {
     textTabTrigger?: number;
@@ -37,6 +38,28 @@ export function ElementsMenu({
     const [textOpacity, setTextOpacity] = useState(100);
     const [textFontFamily, setTextFontFamily] = useState("Inter");
     const [textFontWeight, setTextFontWeight] = useState<"normal" | "medium" | "bold">("bold");
+    const [textFontStyle, setTextFontStyle] = useState<"normal" | "italic">("normal");
+    const [textDecoration, setTextDecoration] = useState<"none" | "underline" | "line-through">("none");
+    const [textAlign, setTextAlign] = useState<"left" | "center" | "right">("center");
+    const [textLetterSpacing, setTextLetterSpacing] = useState(0);
+    const [textLineHeight, setTextLineHeight] = useState(1.2);
+    const [textTransform, setTextTransform] = useState<"none" | "uppercase" | "lowercase">("none");
+    const [textStrokeColor, setTextStrokeColor] = useState("#000000");
+    const [textStrokeWidth, setTextStrokeWidth] = useState(0);
+    const [textBackgroundColor, setTextBackgroundColor] = useState("#000000");
+    const [textBackgroundOpacity, setTextBackgroundOpacity] = useState(0);
+    const [textBackgroundPadding, setTextBackgroundPadding] = useState(12);
+    const [textBackgroundRadius, setTextBackgroundRadius] = useState(8);
+    const [textShadowColor, setTextShadowColor] = useState("#000000");
+    const [textShadowBlur, setTextShadowBlur] = useState(0);
+    const [textShadowOffsetX, setTextShadowOffsetX] = useState(0);
+    const [textShadowOffsetY, setTextShadowOffsetY] = useState(4);
+    const [textAnimationType, setTextAnimationType] = useState<TextAnimationType>("none");
+    const [textAnimationDuration, setTextAnimationDuration] = useState(0.5);
+    const [textAnimationDelay, setTextAnimationDelay] = useState(0);
+    const [textAnimationIntensity, setTextAnimationIntensity] = useState(50);
+    const [textStartTime, setTextStartTime] = useState(0);
+    const [textEndTime, setTextEndTime] = useState(0);
     const [imageOpacity, setImageOpacity] = useState(100);
     const [imageSize, setImageSize] = useState(30);
     const [selectedSvgCategory, setSelectedSvgCategory] = useState<string>("all");
@@ -83,6 +106,28 @@ export function ElementsMenu({
                     setTextOpacity(Math.round(selectedElement.opacity * 100));
                     setTextFontFamily(selectedElement.fontFamily);
                     setTextFontWeight(selectedElement.fontWeight);
+                    setTextFontStyle(selectedElement.fontStyle ?? "normal");
+                    setTextDecoration(selectedElement.textDecoration ?? "none");
+                    setTextAlign(selectedElement.textAlign ?? "center");
+                    setTextLetterSpacing(selectedElement.letterSpacing ?? 0);
+                    setTextLineHeight(selectedElement.lineHeight ?? 1.2);
+                    setTextTransform(selectedElement.textTransform ?? "none");
+                    setTextStrokeColor(selectedElement.strokeColor ?? "#000000");
+                    setTextStrokeWidth(selectedElement.strokeWidth ?? 0);
+                    setTextBackgroundColor(selectedElement.backgroundColor ?? "#000000");
+                    setTextBackgroundOpacity(Math.round((selectedElement.backgroundOpacity ?? 0) * 100));
+                    setTextBackgroundPadding(selectedElement.backgroundPadding ?? 12);
+                    setTextBackgroundRadius(selectedElement.backgroundRadius ?? 8);
+                    setTextShadowColor(selectedElement.shadowColor ?? "#000000");
+                    setTextShadowBlur(selectedElement.shadowBlur ?? 0);
+                    setTextShadowOffsetX(selectedElement.shadowOffsetX ?? 0);
+                    setTextShadowOffsetY(selectedElement.shadowOffsetY ?? 4);
+                    setTextAnimationType(selectedElement.animation?.type ?? "none");
+                    setTextAnimationDuration(selectedElement.animation?.duration ?? 0.5);
+                    setTextAnimationDelay(selectedElement.animation?.delay ?? 0);
+                    setTextAnimationIntensity(selectedElement.animation?.intensity ?? 50);
+                    setTextStartTime(selectedElement.startTime ?? 0);
+                    setTextEndTime(Number.isFinite(selectedElement.endTime) ? selectedElement.endTime! : 0);
                     setMode("text");
                 }
             } else {
@@ -90,6 +135,16 @@ export function ElementsMenu({
                 setImageSize(30); setImageOpacity(100);
                 setTextContent("Texto"); setTextFontSize(48); setTextColor("#FFFFFF");
                 setTextOpacity(100); setTextFontFamily("Inter"); setTextFontWeight("bold");
+                setTextFontStyle("normal"); setTextDecoration("none"); setTextAlign("center");
+                setTextLetterSpacing(0); setTextLineHeight(1.2); setTextTransform("none");
+                setTextStrokeColor("#000000"); setTextStrokeWidth(0);
+                setTextBackgroundColor("#000000"); setTextBackgroundOpacity(0);
+                setTextBackgroundPadding(12); setTextBackgroundRadius(8);
+                setTextShadowColor("#000000"); setTextShadowBlur(0);
+                setTextShadowOffsetX(0); setTextShadowOffsetY(4);
+                setTextAnimationType("none"); setTextAnimationDuration(0.5);
+                setTextAnimationDelay(0); setTextAnimationIntensity(50);
+                setTextStartTime(0); setTextEndTime(0);
             }
             setTimeout(() => { isSyncing.current = false; }, 0);
         });
@@ -119,11 +174,24 @@ export function ElementsMenu({
         if (!isSyncing.current && selectedElement?.type === "text") {
             onUpdateElementRef.current?.(selectedElement.id, {
                 content: textContent, fontSize: textFontSize, color: textColor,
-                opacity: textOpacity / 100, fontFamily: textFontFamily, fontWeight: textFontWeight
+                opacity: textOpacity / 100, fontFamily: textFontFamily, fontWeight: textFontWeight,
+                fontStyle: textFontStyle, textDecoration, textAlign, letterSpacing: textLetterSpacing,
+                lineHeight: textLineHeight, textTransform, strokeColor: textStrokeColor,
+                strokeWidth: textStrokeWidth, backgroundColor: textBackgroundColor,
+                backgroundOpacity: textBackgroundOpacity / 100, backgroundPadding: textBackgroundPadding,
+                backgroundRadius: textBackgroundRadius, shadowColor: textShadowColor,
+                shadowBlur: textShadowBlur, shadowOffsetX: textShadowOffsetX,
+                shadowOffsetY: textShadowOffsetY, startTime: textStartTime,
+                endTime: textEndTime > 0 ? textEndTime : undefined,
+                animation: { type: textAnimationType, duration: textAnimationDuration, delay: textAnimationDelay, intensity: textAnimationIntensity },
             });
         }
     }, [textContent, textFontSize, textColor, textOpacity, textFontFamily,
-        textFontWeight, selectedElement?.id, selectedElement?.type]);
+        textFontWeight, textFontStyle, textDecoration, textAlign, textLetterSpacing,
+        textLineHeight, textTransform, textStrokeColor, textStrokeWidth, textBackgroundColor,
+        textBackgroundOpacity, textBackgroundPadding, textBackgroundRadius, textShadowColor,
+        textShadowBlur, textShadowOffsetX, textShadowOffsetY, textAnimationType, textAnimationDuration, textAnimationDelay,
+        textAnimationIntensity, textStartTime, textEndTime, selectedElement?.id, selectedElement?.type]);
 
     useEffect(() => {
         canvasUploadsGetAll()
@@ -250,6 +318,33 @@ export function ElementsMenu({
         };
         onAddElement(newElement);
     }, [imageSize, imageOpacity, onAddElement]);
+
+    const createTextElement = (overrides: Partial<TextElement>, timestamp: number, id: string): TextElement => {
+        return {
+            id,
+            type: "text", x: 50, y: 50, width: 0, height: 0, rotation: 0,
+            opacity: textOpacity / 100, zIndex: timestamp, content: textContent,
+            fontSize: textFontSize, color: textColor, fontFamily: textFontFamily,
+            fontWeight: textFontWeight, fontStyle: textFontStyle, textDecoration,
+            textAlign, letterSpacing: textLetterSpacing, lineHeight: textLineHeight,
+            textTransform, strokeColor: textStrokeColor, strokeWidth: textStrokeWidth,
+            backgroundColor: textBackgroundColor, backgroundOpacity: textBackgroundOpacity / 100,
+            backgroundPadding: textBackgroundPadding, backgroundRadius: textBackgroundRadius,
+            shadowColor: textShadowColor, shadowBlur: textShadowBlur,
+            shadowOffsetX: textShadowOffsetX, shadowOffsetY: textShadowOffsetY,
+            startTime: textStartTime, endTime: textEndTime > 0 ? textEndTime : undefined,
+            animation: { type: textAnimationType, duration: textAnimationDuration, delay: textAnimationDelay, intensity: textAnimationIntensity },
+            ...overrides,
+        };
+    };
+
+    const applyTextTemplate = (template: TextTemplate, timestamp: number, id: string) => {
+        if (selectedElement?.type === "text") {
+            onUpdateElement?.(selectedElement.id, template.style);
+        } else {
+            onAddElement(createTextElement(template.style, timestamp, id));
+        }
+    };
 
     return (
         <div className="p-4 flex flex-col gap-5">
@@ -434,7 +529,23 @@ export function ElementsMenu({
                 <div className="flex flex-col gap-5 animate-in fade-in duration-150">
                     <div className="space-y-2">
                         <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">{t("text.content")}</div>
-                        <input type="text" value={textContent} onChange={(e) => setTextContent(e.target.value)} className="w-full bg-white/4 hover:bg-white/[0.07] transition border border-white/8 squircle-element px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/20" placeholder={t("text.placeholder")} />
+                        <textarea rows={3} value={textContent} onChange={(e) => setTextContent(e.target.value)} className="w-full resize-y bg-white/4 hover:bg-white/[0.07] transition border border-white/8 squircle-element px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/20" placeholder={t("text.placeholder")} />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Text templates</div>
+                            <span className="text-[9px] text-white/30">{selectedElement?.type === "text" ? "Apply" : "Add"}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {TEXT_TEMPLATES.map((template) => (
+                                <button key={template.id} onClick={() => { const timestamp = Date.now(); applyTextTemplate(template, timestamp, `text-${timestamp}-${crypto.randomUUID()}`); }} className="min-h-20 overflow-hidden bg-white/3 hover:bg-white/[0.08] border border-white/[0.07] hover:border-white/20 squircle-element p-2.5 text-left transition-all active:scale-[.98]">
+                                    <div className="truncate text-white leading-tight" style={{ fontFamily: getTextFontFamilyCss(template.style.fontFamily ?? "Inter"), fontWeight: template.style.fontWeight === "bold" ? 700 : template.style.fontWeight === "medium" ? 500 : 400, color: template.style.color ?? "#ffffff", letterSpacing: `${Math.max(-1, Math.min(3, (template.style.letterSpacing ?? 0) / 3))}px`, textShadow: (template.style.shadowBlur ?? 0) > 0 ? `0 0 8px ${template.style.shadowColor}` : undefined }}>{template.preview}</div>
+                                    <div className="mt-2 text-[9px] font-semibold text-white/55">{template.name}</div>
+                                    <div className="text-[8px] text-white/30 truncate">{template.description}</div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="space-y-2">
@@ -461,12 +572,12 @@ export function ElementsMenu({
                         <div className="space-y-2">
                             <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">{t("text.font")}</div>
                             <Select value={textFontFamily} onValueChange={setTextFontFamily}>
-                                <SelectTrigger className="w-full bg-white/4 hover:bg-white/[0.07] transition border-white/8 squircle-element text-white/80" style={{ fontFamily: textFontFamily }}>
+                                <SelectTrigger className="w-full bg-white/4 hover:bg-white/[0.07] transition border-white/8 squircle-element text-white/80" style={{ fontFamily: getTextFontFamilyCss(textFontFamily) }}>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className="bg-[#1a1a1e] border-white/10">
                                     {FONT_FAMILIES.map((f) => (
-                                        <SelectItem key={f} value={f} className="text-white/80 hover:bg-white/10 cursor-pointer" style={{ fontFamily: f }}>{f}</SelectItem>
+                                        <SelectItem key={f} value={f} className="text-white/80 hover:bg-white/10 cursor-pointer" style={{ fontFamily: getTextFontFamilyCss(f) }}>{f}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -503,20 +614,67 @@ export function ElementsMenu({
                         </div>
                     </div>
 
+                    <div className="space-y-2">
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Formatting</div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            <button onClick={() => setTextFontStyle(value => value === "italic" ? "normal" : "italic")} className={`h-9 squircle-element border text-sm italic ${textFontStyle === "italic" ? "bg-blue-500/20 border-blue-400/40 text-blue-300" : "bg-white/3 border-white/8 text-white/55"}`}>I</button>
+                            <button onClick={() => setTextDecoration(value => value === "underline" ? "none" : "underline")} className={`h-9 squircle-element border text-sm underline ${textDecoration === "underline" ? "bg-blue-500/20 border-blue-400/40 text-blue-300" : "bg-white/3 border-white/8 text-white/55"}`}>U</button>
+                            <button onClick={() => setTextDecoration(value => value === "line-through" ? "none" : "line-through")} className={`h-9 squircle-element border text-sm line-through ${textDecoration === "line-through" ? "bg-blue-500/20 border-blue-400/40 text-blue-300" : "bg-white/3 border-white/8 text-white/55"}`}>S</button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(["left", "center", "right"] as const).map(align => <button key={align} onClick={() => setTextAlign(align)} className={`h-9 squircle-element border flex items-center justify-center ${textAlign === align ? "bg-blue-500/20 border-blue-400/40 text-blue-300" : "bg-white/3 border-white/8 text-white/55"}`}><Icon icon={`ph:text-align-${align}`} width="17" /></button>)}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(["none", "uppercase", "lowercase"] as const).map(transform => <button key={transform} onClick={() => setTextTransform(transform)} className={`h-8 px-2 squircle-element border text-[9px] uppercase ${textTransform === transform ? "bg-blue-500/20 border-blue-400/40 text-blue-300" : "bg-white/3 border-white/8 text-white/45"}`}>{transform === "none" ? "Aa" : transform === "uppercase" ? "AA" : "aa"}</button>)}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <SliderControl icon="mdi:format-letter-spacing" label="Letter spacing" value={textLetterSpacing} onChange={setTextLetterSpacing} min={-5} max={30} />
+                        <SliderControl icon="mdi:format-line-spacing" label="Line height" value={Math.round(textLineHeight * 100)} onChange={(value) => setTextLineHeight(value / 100)} min={70} max={240} />
+                    </div>
+
+                    <div className="space-y-3 border-t border-white/8 pt-4">
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Outline & shadow</div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 p-2 text-[10px] text-white/50">Outline <input type="color" value={textStrokeColor} onChange={(e) => setTextStrokeColor(e.target.value)} className="ml-auto h-6 w-8 bg-transparent" /></label>
+                            <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 p-2 text-[10px] text-white/50">Shadow <input type="color" value={textShadowColor} onChange={(e) => setTextShadowColor(e.target.value)} className="ml-auto h-6 w-8 bg-transparent" /></label>
+                        </div>
+                        <SliderControl icon="mdi:format-text-variant-outline" label="Outline width" value={textStrokeWidth} onChange={setTextStrokeWidth} min={0} max={12} />
+                        <SliderControl icon="mdi:blur" label="Shadow blur" value={textShadowBlur} onChange={setTextShadowBlur} min={0} max={60} />
+                        <SliderControl icon="mdi:arrow-left-right" label="Shadow horizontal" value={textShadowOffsetX} onChange={setTextShadowOffsetX} min={-40} max={40} />
+                        <SliderControl icon="mdi:arrow-up-down" label="Shadow vertical" value={textShadowOffsetY} onChange={setTextShadowOffsetY} min={-40} max={40} />
+                    </div>
+
+                    <div className="space-y-3 border-t border-white/8 pt-4">
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Background</div>
+                        <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 p-2 text-[10px] text-white/50">Color <input type="color" value={textBackgroundColor} onChange={(e) => setTextBackgroundColor(e.target.value)} className="ml-auto h-6 w-10 bg-transparent" /></label>
+                        <SliderControl icon="mdi:opacity" label="Background opacity" value={textBackgroundOpacity} onChange={setTextBackgroundOpacity} min={0} max={100} />
+                        <SliderControl icon="mdi:arrow-expand-all" label="Background padding" value={textBackgroundPadding} onChange={setTextBackgroundPadding} min={0} max={60} />
+                        <SliderControl icon="mdi:rounded-corner" label="Corner radius" value={textBackgroundRadius} onChange={setTextBackgroundRadius} min={0} max={60} />
+                    </div>
+
+                    <div className="space-y-3 border-t border-white/8 pt-4">
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">Animation</div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(["none", "fade", "slide-up", "slide-down", "slide-left", "slide-right", "scale", "pop", "typewriter"] as TextAnimationType[]).map(animation => <button key={animation} onClick={() => setTextAnimationType(animation)} className={`min-h-9 px-2 squircle-element border text-[9px] capitalize ${textAnimationType === animation ? "bg-violet-500/20 border-violet-400/40 text-violet-300" : "bg-white/3 border-white/8 text-white/45"}`}>{animation.replace("-", " ")}</button>)}
+                        </div>
+                        <SliderControl icon="mdi:timer-outline" label="Duration" value={Math.round(textAnimationDuration * 100)} onChange={(value) => setTextAnimationDuration(value / 100)} min={10} max={500} />
+                        <SliderControl icon="mdi:timer-sand" label="Delay" value={Math.round(textAnimationDelay * 100)} onChange={(value) => setTextAnimationDelay(value / 100)} min={0} max={1000} />
+                        <SliderControl icon="mdi:motion" label="Motion amount" value={textAnimationIntensity} onChange={setTextAnimationIntensity} min={10} max={200} />
+                        <div className="grid grid-cols-2 gap-2">
+                            <label className="text-[9px] uppercase tracking-wider text-white/40">Start (sec)<input type="number" min={0} step={0.1} value={textStartTime} onChange={(e) => setTextStartTime(Math.max(0, Number(e.target.value)))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                            <label className="text-[9px] uppercase tracking-wider text-white/40">End (0 = full)<input type="number" min={0} step={0.1} value={textEndTime} onChange={(e) => setTextEndTime(Math.max(0, Number(e.target.value)))} className="mt-1 w-full rounded-lg border border-white/8 bg-white/4 px-2 py-2 text-xs text-white outline-none" /></label>
+                        </div>
+                    </div>
+
                     <div className="space-y-3">
                         <SliderControl icon="mdi:opacity" label={t("properties.opacity")} value={textOpacity} onChange={setTextOpacity} />
                     </div>
 
                     <Button onClick={() => {
                         const timestamp = Date.now();
-                        const newElement: TextElement = {
-                            id: `text-${timestamp}-${Math.random().toString(36).substring(2, 9)}`,
-                            type: "text", x: 50, y: 50, width: 0, height: 0, rotation: 0,
-                            opacity: textOpacity / 100, zIndex: timestamp,
-                            content: textContent, fontSize: textFontSize, color: textColor,
-                            fontFamily: textFontFamily, fontWeight: textFontWeight,
-                        };
-                        onAddElement(newElement);
+                        onAddElement(createTextElement({}, timestamp, `text-${timestamp}-${crypto.randomUUID()}`));
                     }} variant="outline" className="w-full text-xs">
                         <Icon icon="ph:plus-bold" width="16" />
                         {t("text.addButton")}

@@ -1,5 +1,5 @@
-import { BackgroundTab, Tool, VideoThumbnail } from "./editor.types";
-import { BackgroundColorConfig } from "./background.types";
+import { AspectRatio, BackgroundTab, Tool, VideoThumbnail } from "./editor.types";
+import { BackgroundColorConfig, BackgroundVideoItem, BackgroundVideoTransform } from "./background.types";
 import { ZoomFragment } from "./zoom.types";
 import { MockupConfig, MenuPage } from "./mockup.types";
 import type { CanvasElement } from "./canvas-elements.types";
@@ -16,8 +16,13 @@ export interface ControlPanelProps {
     padding: number;
     roundedCorners: number;
     shadows: number;
+    aspectRatio?: AspectRatio;
+    onAspectRatioChange?: (ratio: AspectRatio) => void;
     uploadedImages: string[];
     selectedImageUrl: string;
+    uploadedBackgroundVideos: BackgroundVideoItem[];
+    selectedBackgroundVideoId: string;
+    backgroundVideoTransform: BackgroundVideoTransform;
     backgroundColorConfig: BackgroundColorConfig | null;
     backgroundColorCss?: string;
     onBackgroundTabChange: (tab: BackgroundTab) => void;
@@ -29,6 +34,10 @@ export interface ControlPanelProps {
     onImageUpload: (file: File) => void;
     onImageSelect: (url: string) => void;
     onImageRemove: (url: string) => void;
+    onBackgroundVideoUpload: (file: File) => void;
+    onBackgroundVideoSelect: (id: string) => void;
+    onBackgroundVideoRemove: (id: string) => void;
+    onBackgroundVideoTransformReset: () => void;
     onBackgroundColorChange: (config: BackgroundColorConfig) => void;
     zoomFragments?: ZoomFragment[];
     selectedZoomFragment?: ZoomFragment | null;

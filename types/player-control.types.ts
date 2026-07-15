@@ -1,6 +1,9 @@
 import type { AspectRatio } from "./editor.types";
 import type { ImageMaskConfig } from "./photo.types";
 
+export type PreviewQuality = "auto" | "full" | "half" | "quarter";
+export type ProxyStatus = "idle" | "generating" | "ready" | "error";
+
 export interface PlayerControlsProps {
     isPlaying: boolean;
     currentTime: number;
@@ -22,6 +25,17 @@ export interface PlayerControlsProps {
     videoPreviewImageUrl?: string | null;
     onSplitClip?: () => void;
     canSplitClip?: boolean;
+    previewQuality: PreviewQuality;
+    onPreviewQualityChange: (quality: PreviewQuality) => void;
+    isPreviewCaching?: boolean;
+    previewCacheProgress?: number;
+    proxyStatus?: ProxyStatus;
+    proxyProgress?: number;
+    proxyCount?: number;
+    canCreateProxies?: boolean;
+    onCreateProxies?: () => void;
+    onRemoveProxies?: () => void;
+    onCancelProxyCreation?: () => void;
 }
 
 export const MIN_ZOOM = 1;
