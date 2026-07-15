@@ -105,7 +105,7 @@ export interface VideoCanvasProps {
     currentTime?: number;
     mockupId?: string;
     mockupConfig?: import("./mockup.types").MockupConfig;
-    onVideoUpload?: (file: File) => void;
+    onVideoUpload?: (files: File[]) => void | Promise<void>;
     onImageUpload?: (file: File) => void;
     onImageDrop?: (files: FileList | File[]) => void;
     isUploading?: boolean;

@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import type { MediaType } from "@/types/editor.types";
 
 interface PlaceholderEditorProps {
-    onVideoUpload?: (file: File) => void;
+    onVideoUpload?: (files: File[]) => void | Promise<void>;
     isUploading?: boolean;
     mediaType?: MediaType;
 }
@@ -18,11 +18,13 @@ export default function PlaceholderEditor({ onVideoUpload, isUploading = false, 
     const isImageMode = mediaType === "image";
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file && onVideoUpload) {
-            onVideoUpload(file);
-            e.target.value = '';
+        const files = Array.from(e.target.files ?? []).filter(file => isImageMode
+            ? file.type.startsWith("image/")
+            : file.type.startsWith("video/"));
+        if (files.length > 0 && onVideoUpload) {
+            void onVideoUpload(isImageMode ? files.slice(0, 1) : files);
         }
+        e.target.value = '';
     };
 
     const handleUploadClick = () => {
@@ -51,13 +53,12 @@ export default function PlaceholderEditor({ onVideoUpload, isUploading = false, 
         e.stopPropagation();
         setIsDragging(false);
 
-        const file = e.dataTransfer.files?.[0];
-        const isValidFile = isImageMode 
-            ? file?.type.startsWith("image/")
-            : file?.type.startsWith("video/");
-        
-        if (file && isValidFile && onVideoUpload) {
-            onVideoUpload(file);
+        const files = Array.from(e.dataTransfer.files ?? []).filter(file => isImageMode
+            ? file.type.startsWith("image/")
+            : file.type.startsWith("video/"));
+
+        if (files.length > 0 && onVideoUpload) {
+            void onVideoUpload(isImageMode ? files.slice(0, 1) : files);
         }
     };
 
@@ -197,6 +198,7 @@ export default function PlaceholderEditor({ onVideoUpload, isUploading = false, 
                         ref={fileInputRef}
                         type="file"
                         accept={acceptedFormats}
+                        multiple={!isImageMode}
                         className="hidden"
                         onChange={handleFileChange}
                     />

@@ -18,7 +18,7 @@ import { LibraryVideoInfo } from "@/types";
 interface VideosMenuProps {
   onAddToTrack?: (videoId: string, blob: Blob, duration: number) => void;
   onRemoveFromTrack?: (videoId: string) => void;
-  onVideoUpload?: (file: File) => void;
+  onVideoUpload?: (files: File[]) => void | Promise<void>;
   onVideoDeleteFromTrack?: (videoId: string) => void;
   videosInTrackIds?: string[];
   refreshTrigger?: number;
@@ -101,9 +101,9 @@ export function VideosMenu({
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && onVideoUpload) {
-        onVideoUpload(file);
+      const files = Array.from(e.target.files ?? []).filter(file => file.type.startsWith("video/"));
+      if (files.length > 0 && onVideoUpload) {
+        void onVideoUpload(files);
       }
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -138,9 +138,9 @@ export function VideosMenu({
     e.stopPropagation();
     setIsDragging(false);
     if (isUploading) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith("video/") && onVideoUpload) {
-      onVideoUpload(file);
+    const files = Array.from(e.dataTransfer.files ?? []).filter(file => file.type.startsWith("video/"));
+    if (files.length > 0 && onVideoUpload) {
+      void onVideoUpload(files);
     }
   };
 
@@ -169,7 +169,7 @@ export function VideosMenu({
         )}
       </AnimatePresence>
 
-      <input ref={fileInputRef} type="file" accept="video/*" onChange={handleFileSelect} className="hidden" />
+      <input ref={fileInputRef} type="file" accept="video/*" multiple onChange={handleFileSelect} className="hidden" />
 
       <div className="flex items-center gap-2 text-white font-medium">
         <Icon icon="solar:video-library-outline" width="20" aria-hidden="true" />

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { loadVideoFromIndexedDB, deleteRecordedVideo } from "@/hooks/useScreenRecording";
 import { useVideoUpload } from "@/hooks/useVideoUpload";
 import { useImageProjects } from "@/hooks/useImageProjects";
-import { getUploadedVideo, deleteUploadedVideo, getVideoMetadata } from "@/lib/video-upload-cache";
+import { getUploadedVideo, deleteUploadedVideo } from "@/lib/video-upload-cache";
 import { getUploadedImage, deleteUploadedImage } from "@/lib/image-upload-cache";
 import { useEditorMode } from "@/hooks/useEditorMode";
 import { useActiveTool } from "@/hooks/useActiveTool";
@@ -16,7 +16,7 @@ import { useVideoExport } from "@/hooks/useVideoExport";
 import { useVideoThumbnails, type VideoThumbnail } from "@/hooks/useVideoThumbnails";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { clearAllThumbnailCache } from "@/lib/thumbnail-cache";
-import { addVideoToSessionLibrary, addVideoToLibraryWithMetadata, getLibraryVideoCount, getLibraryVideo, findExistingVideo, persistLibraryVideos } from "@/lib/videos-library";
+import { addVideoToSessionLibrary, addVideoToLibraryWithMetadata, getLibraryVideo, findExistingVideo, persistLibraryVideos } from "@/lib/videos-library";
 import { calculateTotalDuration, findNextClipPosition, getClipAtTime, getClipPlaybackRate, getClipTimelineDuration, splitClipAtTime, timelineToClipTime as mapTimelineToClipTime, type VideoTrackClip } from "@/types/video-track.types";
 import type { ExportQuality, BackgroundTab, VideoCanvasHandle, BackgroundColorConfig, BackgroundVideoItem, AspectRatio, CropArea, ZoomFragment, AudioTrack, ImageExportFormat } from "@/types";
 import type { TrimRange } from "@/types/timeline.types";
@@ -1994,6 +1994,9 @@ export default function Editor() {
 
     const { exportVideo, cancelExport, exportProgress } = useVideoExport(videoRef, canvasRef);
     const { uploadVideo, loadUploadedVideo, isUploading } = useVideoUpload();
+    const batchImportRef = useRef(false);
+    const [isBatchImporting, setIsBatchImporting] = useState(false);
+    const isVideoImporting = isUploading || isBatchImporting;
     const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
 
     const switchActiveVideoSource = useCallback(async (
@@ -2236,115 +2239,122 @@ export default function Editor() {
         }
     };
 
-    const handleVideoUpload = useCallback(async (file: File) => {
-        const hasExistingClips = videoClipsRef.current.length > 0;
+    const handleVideoUpload = useCallback(async (selectedFiles: File[]) => {
+        const files = selectedFiles.filter(file => file.type.startsWith("video/"));
+        if (files.length === 0 || batchImportRef.current) return;
 
-        // Open the browser-provided File directly. This only reads metadata and
-        // creates an object URL; it does not copy or modify the original file.
-        const uploadedData = await uploadVideo(file);
-        if (!uploadedData) return;
+        const previousClips = videoClipsRef.current;
+        const isFirstImport = previousClips.length === 0;
+        const importedVideos: Array<{
+            file: File;
+            uploadedData: NonNullable<Awaited<ReturnType<typeof uploadVideo>>>;
+            libraryVideo: Awaited<ReturnType<typeof addVideoToSessionLibrary>>;
+        }> = [];
 
-        let libraryVideo: Awaited<ReturnType<typeof addVideoToSessionLibrary>>;
+        batchImportRef.current = true;
+        setIsBatchImporting(true);
         try {
-            libraryVideo = await addVideoToSessionLibrary(file, {
-                duration: uploadedData.duration,
-                width: uploadedData.width,
-                height: uploadedData.height,
-                aspectRatio: uploadedData.aspectRatio,
+            // Process sequentially so the timeline order always matches the
+            // order selected in the native file picker or drag operation.
+            for (const file of files) {
+                const uploadedData = await uploadVideo(file);
+                if (!uploadedData) continue;
+
+                try {
+                    const libraryVideo = await addVideoToSessionLibrary(file, {
+                        duration: uploadedData.duration,
+                        width: uploadedData.width,
+                        height: uploadedData.height,
+                        aspectRatio: uploadedData.aspectRatio,
+                    });
+                    importedVideos.push({ file, uploadedData, libraryVideo });
+                } catch (error) {
+                    URL.revokeObjectURL(uploadedData.url);
+                    console.warn(`Failed to import ${file.name}:`, error);
+                }
+            }
+
+            if (importedVideos.length === 0) return;
+
+            if (isFirstImport) {
+                proxyAbortRef.current?.abort();
+                proxyAbortRef.current = null;
+                for (const proxy of proxyUrlsRef.current.values()) disposeSessionVideoProxy(proxy);
+                proxyUrlsRef.current.clear();
+                setProxyCount(0);
+                setProxyProgress(0);
+                setProxyStatus("idle");
+                for (const url of videoUrlsRef.current.values()) URL.revokeObjectURL(url);
+                videoBlobsRef.current.clear();
+                videoUrlsRef.current.clear();
+                clipAudioStateRef.current.clear();
+                await clearAllThumbnailCache().catch(error => {
+                    console.warn("Failed to clear thumbnails:", error);
+                });
+            }
+
+            let nextStartTime = findNextClipPosition(previousClips);
+            const newClips = importedVideos.map(({ file, uploadedData, libraryVideo }) => {
+                videoBlobsRef.current.set(libraryVideo.id, file);
+                videoUrlsRef.current.set(libraryVideo.id, uploadedData.url);
+                clipAudioStateRef.current.set(libraryVideo.id, libraryVideo.hasAudio !== false);
+
+                const clip: VideoTrackClip = {
+                    id: crypto.randomUUID(),
+                    libraryVideoId: libraryVideo.id,
+                    name: file.name,
+                    startTime: nextStartTime,
+                    duration: uploadedData.duration,
+                    trimStart: 0,
+                    trimEnd: uploadedData.duration,
+                    thumbnailUrl: libraryVideo.thumbnailUrl,
+                };
+                nextStartTime += getClipTimelineDuration(clip);
+                return clip;
             });
-            const count = await getLibraryVideoCount();
-            setNewVideosCount(hasExistingClips ? count : 0);
-            setVideosLibraryRefresh(prev => prev + 1);
-        } catch (error) {
-            console.warn("Failed to add video to library:", error);
-            return;
-        }
 
-        if (hasExistingClips) {
-            videoBlobsRef.current.set(libraryVideo.id, file);
-            videoUrlsRef.current.set(libraryVideo.id, uploadedData.url);
-            if (!proxyUrlsRef.current.has(libraryVideo.id)) setProxyStatus("idle");
+            const updatedClips = [...previousClips, ...newClips].sort((a, b) => a.startTime - b.startTime);
+            const totalDuration = calculateTotalDuration(updatedClips);
+            const nextRange = { start: 0, end: totalDuration };
+            videoClipsRef.current = updatedClips;
+            setVideoClips(updatedClips);
+            setVideoDuration(totalDuration);
+            setTrimRange(nextRange);
+            setSelectedVideoClipId(newClips[0].id);
+            recordVideoClipHistory(updatedClips, nextRange);
+
+            if (isFirstImport) {
+                const firstImport = importedVideos[0];
+                const firstClip = newClips[0];
+                const originalHasAudio = firstImport.libraryVideo.originalHasAudio !== false;
+                activeClipIdRef.current = firstClip.id;
+                activeClipDataRef.current = firstClip;
+                lastLoadedVideoIdRef.current = firstImport.libraryVideo.id;
+                setVideoBlob(firstImport.file);
+                setVideoUrl(firstImport.uploadedData.url);
+                setVideoId(firstImport.libraryVideo.id);
+                setVideoHasAudioTrack(originalHasAudio);
+                if (!originalHasAudio) setMuteOriginalAudio(true);
+                setAspectRatio(firstImport.uploadedData.aspectRatio);
+                setVideoDimensions({
+                    width: firstImport.uploadedData.width,
+                    height: firstImport.uploadedData.height,
+                });
+                setZoomFragments([]);
+                setCurrentTime(0);
+                setIsPlaying(false);
+            } else if (!newClips.some(clip => proxyUrlsRef.current.has(clip.libraryVideoId))) {
+                setProxyStatus("idle");
+            }
+
+            setNewVideosCount(0);
+            setVideosLibraryRefresh(previous => previous + 1);
             setActiveTool("video");
-            return;
+        } finally {
+            batchImportRef.current = false;
+            setIsBatchImporting(false);
         }
-
-        // First video - add to track
-        proxyAbortRef.current?.abort();
-        proxyAbortRef.current = null;
-        for (const proxy of proxyUrlsRef.current.values()) disposeSessionVideoProxy(proxy);
-        proxyUrlsRef.current.clear();
-        setProxyCount(0);
-        setProxyProgress(0);
-        setProxyStatus("idle");
-        for (const [, url] of videoUrlsRef.current.entries()) {
-            URL.revokeObjectURL(url);
-        }
-        videoBlobsRef.current.clear();
-        videoUrlsRef.current.clear();
-        videoBlobsRef.current.set(libraryVideo.id, file);
-        videoUrlsRef.current.set(libraryVideo.id, uploadedData.url);
-        activeClipIdRef.current = null;
-        activeClipDataRef.current = null;
-        setVideoBlob(file);
-        const originalHasAudio = libraryVideo.originalHasAudio !== false;
-        setVideoHasAudioTrack(originalHasAudio);
-        if (!originalHasAudio) setMuteOriginalAudio(true);
-        clipAudioStateRef.current.set(libraryVideo.id, libraryVideo.hasAudio !== false);
-
-        try {
-            await clearAllThumbnailCache();
-        } catch (error) {
-            console.warn("Failed to clear thumbnails:", error);
-        }
-
-        if (uploadedData) {
-            lastLoadedVideoIdRef.current = uploadedData.videoId;
-
-            setVideoUrl(uploadedData.url);
-            setVideoId(uploadedData.videoId);
-            setVideoDuration(uploadedData.duration);
-            setTrimRange({ start: 0, end: uploadedData.duration });
-            setAspectRatio(uploadedData.aspectRatio);
-            setVideoDimensions({ width: uploadedData.width, height: uploadedData.height });
-
-            const newClip: VideoTrackClip = {
-                id: crypto.randomUUID(),
-                libraryVideoId: libraryVideo.id,
-                name: file.name,
-                startTime: 0,
-                duration: uploadedData.duration,
-                trimStart: 0,
-                trimEnd: uploadedData.duration,
-                thumbnailUrl: libraryVideo.thumbnailUrl,
-            };
-            clipAudioStateRef.current.set(libraryVideo.id, libraryVideo.hasAudio !== false);
-            activeClipIdRef.current = newClip.id;
-            activeClipDataRef.current = newClip;
-            setVideoClips([newClip]);
-            setSelectedVideoClipId(newClip.id);
-
-            setZoomFragments([]);
-
-            setCurrentTime(0);
-            setIsPlaying(false);
-            setTimeout(() => clearHistory(), 200);
-        }
-    }, [uploadVideo, clearHistory]);
-
-    // Handler to upload video to the library only (from VideosMenu)
-    const handleVideoUploadToLibrary = useCallback(async (file: File) => {
-        try {
-            const metadata = await getVideoMetadata(file);
-            const libraryVideo = await addVideoToSessionLibrary(file, metadata);
-            videoBlobsRef.current.set(libraryVideo.id, file);
-            videoUrlsRef.current.set(libraryVideo.id, URL.createObjectURL(file));
-            const count = await getLibraryVideoCount();
-            setNewVideosCount(count);
-            setVideosLibraryRefresh(prev => prev + 1);
-        } catch (error) {
-            console.warn("Failed to add video to library:", error);
-        }
-    }, []);
+    }, [recordVideoClipHistory, setActiveTool, uploadVideo]);
 
     // Handler to add video from library to the track (concatenate)
     const handleAddVideoToTrack = useCallback(async (videoId: string, blob: Blob, duration: number) => {
@@ -3803,7 +3813,7 @@ export default function Editor() {
                         activeTool={activeTool}
                         onToolChange={setActiveTool}
                         onVideoUpload={handleVideoUpload}
-                        isUploading={isUploading}
+                        isUploading={isVideoImporting}
                         selectedZoomFragmentId={selectedZoomFragmentId}
                         selectedAudioTrackId={selectedAudioTrackId}
                         selectedVideoClipId={selectedVideoClipId}
@@ -3902,11 +3912,11 @@ export default function Editor() {
                                         videoDuration={videoDuration}
                                         onAddVideoToTrack={handleAddVideoToTrack}
                                         onRemoveVideoFromTrack={handleRemoveVideoFromTrack}
-                                        onVideoUploadToLibrary={handleVideoUploadToLibrary}
+                                        onVideoUploadToLibrary={handleVideoUpload}
                                         onVideoDeleteFromTrack={handleDeleteVideoFromLibrary}
                                         videosInTrackIds={videosInTrackIds}
                                         videosLibraryRefresh={videosLibraryRefresh}
-                                        isVideoUploading={isUploading}
+                                        isVideoUploading={isVideoImporting}
                                         cameraUrl={cameraUrl}
                                         cameraConfig={cameraConfig}
                                         onCameraConfigChange={handleCameraConfigChange}
@@ -3998,7 +4008,7 @@ export default function Editor() {
                         onVideoUpload={handleVideoUpload}
                         onImageUpload={handleImageUploadToCanvas}
                         onImageDrop={handleImageDrop}
-                        isUploading={isUploading}
+                        isUploading={isVideoImporting}
                         videoTransform={videoTransform}
                         onVideoTransformChange={setVideoTransform}
                         canvasElements={canvasElements}
@@ -4125,7 +4135,7 @@ export default function Editor() {
                 activeTool={activeTool}
                 onToolChange={setActiveTool}
                 onVideoUpload={handleVideoUpload}
-                isUploading={isUploading}
+                isUploading={isVideoImporting}
                 onOpenToolPanel={() => setIsMobileControlPanelOpen(true)}
             />
 

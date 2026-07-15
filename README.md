@@ -29,6 +29,7 @@ The list below covers the feature-level changes made in this fork.
 - Large videos open immediately through browser object URLs instead of waiting for a full upload or database copy before editing begins.
 - Source files remain read-only. Editing, proxy creation, and export never overwrite the original videos.
 - Added a local video library for using multiple source files in one project.
+- Added ordered multi-file import from the picker or drag and drop, appending every selected clip directly to one timeline as a single undoable edit.
 - Persisted project media, uploaded audio, recorded media, images, and background videos in browser storage where required.
 - Added local fallbacks for features that previously expected cloud authentication or online photo providers.
 

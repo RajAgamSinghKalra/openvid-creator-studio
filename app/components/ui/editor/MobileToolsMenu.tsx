@@ -8,7 +8,7 @@ import type { Tool } from "@/types";
 interface MobileToolsMenuProps {
     activeTool: Tool;
     onToolChange: (tool: Tool) => void;
-    onVideoUpload?: (file: File) => void;
+    onVideoUpload?: (files: File[]) => void | Promise<void>;
     isUploading?: boolean;
     onOpenToolPanel?: () => void;
 }
@@ -32,11 +32,11 @@ export function MobileToolsMenu({
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file && onVideoUpload) {
-            onVideoUpload(file);
-            e.target.value = '';
+        const files = Array.from(e.target.files ?? []).filter(file => file.type.startsWith("video/"));
+        if (files.length > 0 && onVideoUpload) {
+            void onVideoUpload(files);
         }
+        e.target.value = '';
     };
 
     return (
@@ -222,6 +222,7 @@ export function MobileToolsMenu({
                             <input
                                 type="file"
                                 accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+                                multiple
                                 className="hidden"
                                 onChange={handleFileChange}
                                 disabled={isUploading}

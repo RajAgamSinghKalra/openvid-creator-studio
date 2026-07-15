@@ -82,7 +82,7 @@ export interface ControlPanelProps {
     // Videos library props
     onAddVideoToTrack?: (videoId: string, blob: Blob, duration: number) => void;
     onRemoveVideoFromTrack?: (videoId: string) => void;
-    onVideoUploadToLibrary?: (file: File) => void;
+    onVideoUploadToLibrary?: (files: File[]) => void | Promise<void>;
     onVideoDeleteFromTrack?: (videoId: string) => void;
     videosInTrackIds?: string[];
     videosLibraryRefresh?: number;

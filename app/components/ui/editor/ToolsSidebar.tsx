@@ -11,7 +11,7 @@ import { useRecording } from "@/app/contexts/RecordingContext";
 import RecordingSetupDialog from "../RecordingSetupDialog";
 
 interface ExtendedToolsSidebarProps extends ToolsSidebarProps {
-    onVideoUpload?: (file: File) => void;
+    onVideoUpload?: (files: File[]) => void | Promise<void>;
     isUploading?: boolean;
     isCursorEnabled?: boolean;
     selectedZoomFragmentId?: string | null;
@@ -97,11 +97,11 @@ export function ToolsSidebar({
     }, [selectedElementId]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file && onVideoUpload) {
-            onVideoUpload(file);
-            e.target.value = '';
+        const files = Array.from(e.target.files ?? []).filter(file => file.type.startsWith("video/"));
+        if (files.length > 0 && onVideoUpload) {
+            void onVideoUpload(files);
         }
+        e.target.value = '';
     };
 
     const handleUploadClick = () => {
@@ -160,9 +160,9 @@ export function ToolsSidebar({
         e.stopPropagation();
         setIsDragging(false);
         if (isUploading) return;
-        const file = e.dataTransfer.files?.[0];
-        if (file && file.type.startsWith("video/") && onVideoUpload) {
-            onVideoUpload(file);
+        const files = Array.from(e.dataTransfer.files ?? []).filter(file => file.type.startsWith("video/"));
+        if (files.length > 0 && onVideoUpload) {
+            void onVideoUpload(files);
         }
     };
 
@@ -436,6 +436,7 @@ export function ToolsSidebar({
                             ref={fileInputRef}
                             type="file"
                             accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+                            multiple
                             className="hidden"
                             onChange={handleFileChange}
                         />

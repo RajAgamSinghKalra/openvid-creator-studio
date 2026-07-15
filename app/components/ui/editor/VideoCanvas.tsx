@@ -2217,7 +2217,12 @@ function VideoCanvasInner({
         ) : (
             <div ref={mockupContentRef} className="w-full h-full aspect-video min-w-75 bg-[#1E1E1E] border border-white/10 flex flex-col overflow-hidden">
                 <PlaceholderEditor
-                    onVideoUpload={mediaType === "video" ? onVideoUpload : onImageUpload}
+                    onVideoUpload={mediaType === "video"
+                        ? onVideoUpload
+                        : (files) => {
+                            const file = files[0];
+                            if (file) onImageUpload?.(file);
+                        }}
                     isUploading={isUploading}
                     mediaType={mediaType}
                 />
